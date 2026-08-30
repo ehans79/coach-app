@@ -5,7 +5,8 @@ import { getActivityDetail } from "@/lib/dashboard/queries";
 export const dynamic = "force-dynamic";
 import { Card } from "@/components/Card";
 import { StatTile } from "@/components/StatTile";
-import { Badge, flagToBadge, adherenceToBadge } from "@/components/Badge";
+import { adherenceToBadge, flagToVerdict } from "@/components/Badge";
+import { HeroVerdict } from "@/components/HeroVerdict";
 import { formatKm, formatDuration, formatPace } from "@/lib/format";
 
 function formatDate(d: Date): string {
@@ -38,20 +39,24 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
         ← Activity Feed
       </Link>
 
-      <div className="mb-6 mt-2 flex items-start justify-between gap-4">
-        <div>
-          <div className="text-xs font-medium text-ink-muted">
-            {formatDate(activity.startDateLocal)} · {activity.sportType}
-          </div>
-          <h1 className="mt-1 text-xl font-semibold text-ink-primary">{activity.name}</h1>
+      <div className="mt-2 mb-6">
+        <div className="text-xs font-medium text-ink-muted">
+          {formatDate(activity.startDateLocal)} · {activity.sportType}
         </div>
-        {activity.comment && (
-          <div className="flex shrink-0 flex-col items-end gap-1.5">
-            <Badge {...flagToBadge(activity.comment.flag)} />
-            <Badge {...adherenceToBadge(activity.comment.zoneAdherence)} />
-          </div>
-        )}
+        <h1 className="mt-1 text-xl font-semibold text-ink-primary">{activity.name}</h1>
       </div>
+
+      {activity.comment && (
+        <div className="mb-6">
+          <HeroVerdict
+            tone={flagToVerdict(activity.comment.flag).tone}
+            eyebrow={adherenceToBadge(activity.comment.zoneAdherence).label}
+            headline={flagToVerdict(activity.comment.flag).headline}
+          >
+            {activity.comment.commentText}
+          </HeroVerdict>
+        </div>
+      )}
 
       <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
         <StatTile label="Distance" value={formatKm(activity.distanceMeters)} />
@@ -80,12 +85,6 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
         )}
         {activity.sufferScore != null && <StatTile label="Suffer score" value={`${activity.sufferScore}`} />}
       </div>
-
-      {activity.comment && (
-        <Card title="Coach's take" className="mb-6">
-          <p className="text-sm text-ink-secondary">{activity.comment.commentText}</p>
-        </Card>
-      )}
 
       {facts?.prescription && (
         <Card title="Prescribed workout" className="mb-6">

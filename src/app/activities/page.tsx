@@ -16,7 +16,7 @@ export default async function ActivityFeedPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="mb-6 text-xl font-semibold text-ink-primary">Activity Feed</h1>
+      <h1 className="mb-6 text-2xl font-extrabold tracking-tight text-ink-primary">Activity Feed</h1>
 
       {activitiesFeed.length === 0 ? (
         <EmptyState message="No activities synced yet." />
@@ -30,7 +30,7 @@ export default async function ActivityFeedPage() {
                     <div className="text-xs font-medium text-ink-muted">
                       {formatDate(a.startDateLocal)} · {a.sportType}
                     </div>
-                    <div className="mt-1 text-sm font-medium text-ink-primary">{a.name}</div>
+                    <div className="mt-1 text-sm font-bold text-ink-primary">{a.name}</div>
                     <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-ink-secondary">
                       {a.distanceMeters != null && <span>{formatKm(a.distanceMeters)}</span>}
                       {a.movingTimeSeconds != null && <span>{formatDuration(a.movingTimeSeconds)}</span>}

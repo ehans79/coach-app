@@ -27,6 +27,15 @@ export function flagToBadge(flag: "none" | "watch" | "correct"): { tone: BadgeTo
   return { tone: "good", label: "On target" };
 }
 
+// Same flag, phrased as a short hero-headline sentence rather than a badge
+// label — the categorical verdict is real (it's the same generated flag),
+// just given the prominence Whoop-style headlines call for.
+export function flagToVerdict(flag: "none" | "watch" | "correct"): { tone: BadgeTone; headline: string } {
+  if (flag === "correct") return { tone: "serious", headline: "Needs a correction" };
+  if (flag === "watch") return { tone: "warning", headline: "Worth a watch" };
+  return { tone: "good", headline: "On target" };
+}
+
 export function adherenceToBadge(adherence: "ok" | "drifted" | "na"): { tone: BadgeTone; label: string } {
   if (adherence === "drifted") return { tone: "serious", label: "Zone drift" };
   if (adherence === "ok") return { tone: "good", label: "Zone adherence ok" };
