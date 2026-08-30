@@ -3,6 +3,7 @@ config({ path: ".env.local", quiet: true });
 config({ quiet: true }); // fall back to .env for anything not in .env.local
 import { syncRecentActivities } from "../src/lib/sync/activities";
 import { findUncommentedRunActivityIds, generateCommentaryForActivity } from "../src/lib/coaching/commentary";
+import { findUnmatchedActivityIds, matchAndMarkCompletion } from "../src/lib/coaching/matching";
 import { regeneratePlanForNextWeek } from "../src/lib/coaching/regeneration";
 
 /**
@@ -16,6 +17,15 @@ async function main() {
   console.log("Syncing recent activities...");
   const syncResult = await syncRecentActivities();
   console.log(`Synced ${syncResult.count} activities.`);
+
+  const unmatched = await findUnmatchedActivityIds();
+  for (const activityId of unmatched) {
+    try {
+      await matchAndMarkCompletion(activityId);
+    } catch (err) {
+      console.error(`Failed to match activity ${activityId} against the plan`, err);
+    }
+  }
 
   const uncommented = await findUncommentedRunActivityIds();
   for (const activityId of uncommented) {

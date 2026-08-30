@@ -1,14 +1,7 @@
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { planWorkouts, plans, activities, activityComments } from "@/lib/db/schema";
-import { localDateOf } from "./matching";
-
-function sportsCompatible(planSport: string, stravaSportType: string): boolean {
-  if (planSport === "run") return stravaSportType === "Run";
-  if (planSport === "strength") return stravaSportType === "WeightTraining" || stravaSportType === "Workout";
-  if (planSport === "bike") return stravaSportType === "Ride";
-  return false;
-}
+import { localDateOf, sportsCompatible } from "./matching";
 
 export interface WeekAssessment {
   weekStartDate: string;
