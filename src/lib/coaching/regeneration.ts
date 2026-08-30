@@ -42,6 +42,7 @@ interface LlmWeekResponse {
   targetHours?: number;
   days: Record<string, LlmWorkout[]>; // keyed by "Monday".."Sunday"
   rationale: string;
+  weekVerdict: string;
 }
 
 function buildPrompt(params: {
@@ -80,7 +81,8 @@ Respond with ONLY a JSON object, no prose outside it, no markdown fences, matchi
     "Monday": [{"sport": "...", "type": "...", "name": "...", "description": "...", "durationMinutes": <number|omit>, "distanceMeters": <number|omit for non-distance sports>, "primaryZone": "Zone X-Y (HR <Nbpm)" or "N/A (strength)", "humanReadable": "athlete-facing instructions"}],
     "Tuesday": [...], "Wednesday": [...], "Thursday": [...], "Friday": [...], "Saturday": [...], "Sunday": [...]
   },
-  "rationale": "2-4 sentences explaining WHY this week looks the way it does, referencing the specific data from last week (e.g. 'long run held flat since Friday's run ran hot again') — this is shown on the dashboard."
+  "rationale": "2-4 sentences explaining WHY this week looks the way it does, referencing the specific data from last week (e.g. 'long run held flat since Friday's run ran hot again') — this is shown on the dashboard.",
+  "weekVerdict": "One short line (under 12 words) summing up how LAST week (the one just assessed) went — e.g. 'Solid week — back on track after last week's dip.' This headlines the weekly email debrief."
 }
 A rest day is a workout entry with sport "rest". Every one of the 7 days must have at least one workout entry (use a rest-day entry for days with nothing planned). Distances in meters, metric only.`;
 }
@@ -161,8 +163,11 @@ export interface RegenerationResult {
   planId: string;
   version: number;
   rationale: string;
+  weekVerdict: string;
   guardrails: Guardrails;
   warnings: string[];
+  assessment: WeekAssessment;
+  newWeek: PlanWeekJson;
 }
 
 /**
@@ -273,7 +278,7 @@ export async function regeneratePlanForNextWeek(todayStr: string): Promise<Regen
       weekStartDate,
       source: "regeneration",
       rationale: clampedWeek.rationale,
-      guardrailsApplied: { ...guardrails, warnings, model: COACHING_MODEL },
+      guardrailsApplied: { ...guardrails, warnings, model: COACHING_MODEL, weekVerdict: clampedWeek.weekVerdict },
       planJson: updatedPlan,
       isActive: true,
     })
@@ -288,7 +293,10 @@ export async function regeneratePlanForNextWeek(todayStr: string): Promise<Regen
     planId: insertedPlan.id,
     version: newVersion,
     rationale: clampedWeek.rationale,
+    weekVerdict: clampedWeek.weekVerdict,
     guardrails,
     warnings,
+    assessment,
+    newWeek,
   };
 }

@@ -11,9 +11,11 @@ export interface WeekAssessment {
   complianceRatio: number;
   plannedRunVolumeKm: number;
   actualRunVolumeKm: number;
+  actualRunDurationSeconds: number;
   longestRunKm: number | null;
   hadZoneDrift: boolean;
   driftedRuns: { date: string; percentAboveTarget: number }[];
+  completedSessions: { date: string; name: string; sport: string }[];
   missedSessions: { date: string; name: string; sport: string }[];
   extraActivities: { date: string; name: string; sport: string; distanceKm: number }[];
   avgSufferScore: number | null;
@@ -45,6 +47,7 @@ export async function assessWeek(weekStartDate: string, weekEndDate: string): Pr
     .where(and(gte(activities.startDateLocal, rangeStart), lte(activities.startDateLocal, rangeEnd)));
 
   const matchedActivityIds = new Set<number>();
+  const completedSessions: WeekAssessment["completedSessions"] = [];
   const missedSessions: WeekAssessment["missedSessions"] = [];
   for (const w of sessionWorkouts) {
     const match = weekActivities.find(
@@ -52,6 +55,7 @@ export async function assessWeek(weekStartDate: string, weekEndDate: string): Pr
     );
     if (match) {
       matchedActivityIds.add(match.id);
+      completedSessions.push({ date: w.date, name: w.name, sport: w.sport });
     } else {
       missedSessions.push({ date: w.date, name: w.name, sport: w.sport });
     }
@@ -75,6 +79,10 @@ export async function assessWeek(weekStartDate: string, weekEndDate: string): Pr
       .reduce((sum, w) => sum + (w.distanceMeters ?? 0), 0) / 1000;
   const actualRunVolumeKm =
     matchedRunActivities.reduce((sum, a) => sum + (a.distanceMeters ?? 0), 0) / 1000;
+  const actualRunDurationSeconds = matchedRunActivities.reduce(
+    (sum, a) => sum + (a.movingTimeSeconds ?? 0),
+    0
+  );
   const longestRunKm =
     matchedRunActivities.length > 0
       ? Math.max(...matchedRunActivities.map((a) => (a.distanceMeters ?? 0) / 1000))
@@ -112,9 +120,11 @@ export async function assessWeek(weekStartDate: string, weekEndDate: string): Pr
     complianceRatio: sessionWorkouts.length > 0 ? matchedActivityIds.size / sessionWorkouts.length : 1,
     plannedRunVolumeKm,
     actualRunVolumeKm,
+    actualRunDurationSeconds,
     longestRunKm,
     hadZoneDrift: driftedRuns.length > 0,
     driftedRuns,
+    completedSessions,
     missedSessions,
     extraActivities,
     avgSufferScore,

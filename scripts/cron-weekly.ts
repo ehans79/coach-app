@@ -5,13 +5,14 @@ import { syncRecentActivities } from "../src/lib/sync/activities";
 import { findUncommentedRunActivityIds, generateCommentaryForActivity } from "../src/lib/coaching/commentary";
 import { findUnmatchedActivityIds, matchAndMarkCompletion } from "../src/lib/coaching/matching";
 import { regeneratePlanForNextWeek } from "../src/lib/coaching/regeneration";
+import { sendWeeklyDebrief } from "../src/lib/email/sendWeeklyDebrief";
 
 /**
  * Entrypoint for the Railway `cron-weekly` service — runs Sunday evening.
  * Syncs first (fallback catch-up for anything a webhook missed this week),
- * generates commentary for anything still uncommented, then regenerates the
- * plan for the coming week. The weekly email debrief chains on here once
- * that feature is built.
+ * generates commentary for anything still uncommented, regenerates the plan
+ * for the coming week, then emails the debrief — chained here rather than a
+ * separate schedule, per the brief.
  */
 async function main() {
   console.log("Syncing recent activities...");
@@ -43,7 +44,9 @@ async function main() {
   console.log("Rationale:", result.rationale);
   if (result.warnings.length > 0) console.log("Warnings:", result.warnings);
 
-  // Weekly email debrief hooks in here (Phase 5).
+  console.log("Sending weekly debrief email...");
+  await sendWeeklyDebrief(result);
+  console.log("Sent.");
 
   process.exit(0);
 }
