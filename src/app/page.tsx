@@ -88,6 +88,10 @@ export default async function ThisWeekPage() {
               )}
             </div>
 
+            {w.humanReadable && (
+              <p className="mt-3 whitespace-pre-line text-sm text-ink-secondary">{w.humanReadable}</p>
+            )}
+
             {w.comment && (
               <div className="mt-3 rounded-lg bg-page p-3">
                 <div className="mb-1.5">
