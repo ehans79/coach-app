@@ -1,10 +1,10 @@
 export type BadgeTone = "good" | "warning" | "serious" | "neutral";
 
 const TONE_STYLES: Record<BadgeTone, { dot: string; bg: string; text: string }> = {
-  good: { dot: "var(--status-good)", bg: "#eaf7ea", text: "#0b0b0b" },
-  warning: { dot: "var(--status-warning)", bg: "#fef3da", text: "#0b0b0b" },
-  serious: { dot: "var(--status-serious)", bg: "#fbe9e2", text: "#0b0b0b" },
-  neutral: { dot: "var(--ink-muted)", bg: "#f1f0ec", text: "#0b0b0b" },
+  good: { dot: "var(--status-good)", bg: "var(--status-good-soft)", text: "var(--ink-primary)" },
+  warning: { dot: "var(--status-warning)", bg: "var(--status-warning-soft)", text: "var(--ink-primary)" },
+  serious: { dot: "var(--status-serious)", bg: "var(--status-serious-soft)", text: "var(--ink-primary)" },
+  neutral: { dot: "var(--ink-muted)", bg: "var(--surface-sunken)", text: "var(--ink-primary)" },
 };
 
 // Status color never carries meaning alone — a dot plus the label text.

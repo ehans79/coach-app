@@ -1,16 +1,17 @@
 import { Html, Head, Body, Container, Section, Row, Column, Text, Heading, Hr, Link, Img, Preview } from "@react-email/components";
+import { theme } from "@/lib/theme";
 
 const colors = {
-  page: "#f9f9f7",
-  surface: "#ffffff",
+  page: theme.page,
+  surface: theme.surface,
   border: "#e1e0d9",
-  inkPrimary: "#0b0b0b",
-  inkSecondary: "#52514e",
-  inkMuted: "#898781",
-  accent: "#2a78d6",
-  good: "#0ca30c",
-  warning: "#b8790a", // darkened from the status warning hex for text-on-white legibility
-  serious: "#c1522c", // darkened from the status serious hex for text-on-white legibility
+  inkPrimary: theme.inkPrimary,
+  inkSecondary: theme.inkSecondary,
+  inkMuted: theme.inkMuted,
+  accent: theme.accentInk, // text-safe (AA) variant — the vivid --accent fails contrast for body-size text on white
+  good: "#1f7a45", // darkened from statusGood for text-on-white legibility (AA)
+  warning: "#96701f", // darkened from statusWarning for text-on-white legibility (AA)
+  serious: "#a15426", // darkened from statusSerious for text-on-white legibility (AA)
 };
 
 export interface WeeklyDebriefChecklistItem {

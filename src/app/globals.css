@@ -1,26 +1,37 @@
 @import "tailwindcss";
 
 :root {
-  /* Chart chrome & ink */
-  --surface: #fcfcfb;
-  --page: #f9f9f7;
-  --ink-primary: #0b0b0b;
-  --ink-secondary: #52514e;
-  --ink-muted: #898781;
+  /* Chart chrome & ink — mirrors src/lib/theme.ts, keep both in sync */
+  --surface: #ffffff;
+  --surface-sunken: #f0efe9;
+  --page: #f6f5f1;
+  --ink-primary: #0a0a0a;
+  --ink-secondary: #4b4a45;
+  --ink-muted: #8b8a83;
   --gridline: #e1e0d9;
   --axis: #c3c2b7;
-  --border: rgba(11, 11, 11, 0.1);
+  --border: rgba(10, 10, 10, 0.08);
+  --border-strong: rgba(10, 10, 10, 0.14);
 
-  /* Accent (categorical slot 1) */
-  --accent: #2a78d6;
-  --accent-soft: #cde2fb;
+  /* Brand accent ("Ember") — used deliberately, never as a status/series color */
+  --accent: #ff4433;
+  --accent-soft: #ffe3dc;
+  --accent-ink: #d6371f;
 
-  /* Status palette (fixed, never reused as a series color) */
-  --status-good: #0ca30c;
-  --status-warning: #fab219;
-  --status-serious: #ec835a;
-  --status-critical: #d03b3b;
-  --success-text: #006300;
+  /* Celebration accent ("Volt") — streaks/milestones only, never body text */
+  --celebrate: #b6f23c;
+  --celebrate-ink: #1a1a1a;
+
+  /* Status palette (fixed, deliberately muted relative to the accent, never reused as a series color) */
+  --status-good: #2e9e5b;
+  --status-good-soft: #e4f5ea;
+  --status-warning: #d9a441;
+  --status-warning-soft: #fbf1de;
+  --status-serious: #c97a4a;
+  --status-serious-soft: #f8e9de;
+  --status-critical: #b3413f;
+  --status-critical-soft: #f6e2e1;
+  --success-text: #1f7a45;
 
   /* Zone intensity ramp — ordinal, one hue, light (Z1) -> dark (Z5) */
   --zone-1: #86b6ef;
@@ -37,6 +48,7 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
   --color-page: var(--page);
   --color-ink-primary: var(--ink-primary);
   --color-ink-secondary: var(--ink-secondary);
@@ -44,12 +56,20 @@
   --color-gridline: var(--gridline);
   --color-axis: var(--axis);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-celebrate: var(--celebrate);
+  --color-celebrate-ink: var(--celebrate-ink);
   --color-status-good: var(--status-good);
+  --color-status-good-soft: var(--status-good-soft);
   --color-status-warning: var(--status-warning);
+  --color-status-warning-soft: var(--status-warning-soft);
   --color-status-serious: var(--status-serious);
+  --color-status-serious-soft: var(--status-serious-soft);
   --color-status-critical: var(--status-critical);
+  --color-status-critical-soft: var(--status-critical-soft);
   --color-success-text: var(--success-text);
   --color-zone-1: var(--zone-1);
   --color-zone-2: var(--zone-2);
@@ -58,6 +78,10 @@
   --color-zone-5: var(--zone-5);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Soft elevation — cards separate from the page via shadow, not just a border */
+  --shadow-card: 0 1px 2px rgba(10, 10, 10, 0.04), 0 10px 28px -16px rgba(10, 10, 10, 0.16);
+  --shadow-pop: 0 1px 2px rgba(10, 10, 10, 0.05), 0 16px 36px -14px rgba(10, 10, 10, 0.22);
 }
 
 /* Light theme only, everywhere — never follow prefers-color-scheme. */

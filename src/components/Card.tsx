@@ -12,7 +12,7 @@ export function Card({
   className?: string;
 }) {
   return (
-    <div className={`rounded-xl border border-border bg-surface p-5 ${className}`}>
+    <div className={`rounded-xl border border-border bg-surface p-5 shadow-card ${className}`}>
       {title && (
         <div className="mb-4">
           <h2 className="text-sm font-semibold text-ink-primary">{title}</h2>

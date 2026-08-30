@@ -29,7 +29,7 @@ export function Nav() {
                 href={item.href}
                 className={`block rounded-md px-3 py-2 text-sm transition-colors ${
                   active
-                    ? "bg-accent-soft font-medium text-accent"
+                    ? "bg-accent-soft font-semibold text-accent-ink"
                     : "text-ink-secondary hover:bg-page hover:text-ink-primary"
                 }`}
               >
