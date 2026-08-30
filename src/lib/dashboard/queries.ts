@@ -3,6 +3,7 @@ import { db } from "@/lib/db/client";
 import { activities, activityComments, planWorkouts, plans, zoneVersions } from "@/lib/db/schema";
 import type { PlanDocument, PlanWeekJson } from "@/lib/coaching/plan";
 import type { CommentaryFacts } from "@/lib/coaching/commentary";
+import { ROLLING_WEEKS } from "@/lib/dashboard/constants";
 
 function mondayOf(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00Z`);
@@ -268,6 +269,17 @@ export interface WeeklyVolumePoint {
   weekStart: string;
   volumeKm: number;
   longestRunKm: number;
+  /** Trailing 4-week average volume, gap weeks (no runs logged) counted as
+   * 0 so a break in training actually pulls the average down — a light
+   * TrainingPeaks-style "chronic load" proxy computed from this same data,
+   * not a new tracked metric. */
+  rollingAvgKm: number;
+}
+
+function addDaysToDateStr(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 export async function getWeeklyVolumeTrend(): Promise<WeeklyVolumePoint[]> {
@@ -285,13 +297,27 @@ export async function getWeeklyVolumeTrend(): Promise<WeeklyVolumePoint[]> {
     byWeek.set(week, entry);
   }
 
-  return [...byWeek.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([weekStart, v]) => ({
-      weekStart,
+  if (byWeek.size === 0) return [];
+
+  const sortedWeeks = [...byWeek.keys()].sort();
+  const firstWeek = sortedWeeks[0];
+  const lastWeek = sortedWeeks[sortedWeeks.length - 1];
+
+  const points: Omit<WeeklyVolumePoint, "rollingAvgKm">[] = [];
+  for (let week = firstWeek; week <= lastWeek; week = addDaysToDateStr(week, 7)) {
+    const v = byWeek.get(week) ?? { volumeM: 0, longestM: 0 };
+    points.push({
+      weekStart: week,
       volumeKm: Math.round((v.volumeM / 1000) * 10) / 10,
       longestRunKm: Math.round((v.longestM / 1000) * 10) / 10,
-    }));
+    });
+  }
+
+  return points.map((p, i) => {
+    const window = points.slice(Math.max(0, i - ROLLING_WEEKS + 1), i + 1);
+    const avg = window.reduce((sum, x) => sum + x.volumeKm, 0) / window.length;
+    return { ...p, rollingAvgKm: Math.round(avg * 10) / 10 };
+  });
 }
 
 export interface ZoneWeekPoint {
