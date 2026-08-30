@@ -1,0 +1,1031 @@
+{
+  "version": "1.0",
+  "meta": {
+    "id": "return-to-running-2026-10",
+    "athlete": "Eduardo Hans",
+    "event": "Return to Running - Aerobic Base Rebuild (no race scheduled yet)",
+    "eventDate": "2026-10-11",
+    "planStartDate": "2026-08-31",
+    "planEndDate": "2026-10-11",
+    "createdAt": "2026-08-30T00:00:00Z",
+    "updatedAt": "2026-08-30T00:00:00Z",
+    "totalWeeks": 6,
+    "generatedBy": "Claude Coach"
+  },
+  "preferences": {
+    "run": "kilometers",
+    "firstDayOfWeek": "monday"
+  },
+  "assessment": {
+    "foundation": {
+      "raceHistory": [
+        "10K training block (Runna app), Oct-Dec 2025",
+        "Speed-focused 'Run Faster' block, Jan-Apr 2026",
+        "No goal race currently scheduled"
+      ],
+      "peakTrainingLoad": 3,
+      "foundationLevel": "intermediate",
+      "yearsInSport": null
+    },
+    "currentForm": {
+      "weeklyVolume": {
+        "total": 0,
+        "run": 0
+      },
+      "longestSessions": {
+        "run": 12
+      },
+      "consistency": "Very consistent Apr-Jun 2026 (3x/week, long run built 6km->12km). Then an 8-9 week break from running (Jun 30-Aug 30, 2026) due to a busy work stretch covering for colleagues plus planned PTO -- only light, easy cycling since. Not injury-related."
+    },
+    "strengths": [
+      {
+        "sport": "run",
+        "evidence": "Built long run from 6km to 12km over 8 weeks (Apr-Jun 2026) with good consistency"
+      }
+    ],
+    "limiters": [
+      {
+        "sport": "run",
+        "evidence": "8-9 week layoff means partial aerobic detraining; restart should be gradual"
+      },
+      {
+        "sport": "strength",
+        "evidence": "Beginner to structured strength training -- starting with foundation-level bodyweight work"
+      },
+      {
+        "sport": "run",
+        "evidence": "Strava activity history shows a lower-leg (shin) issue and recovery block in Aug 2025 -- worth keeping mileage increases conservative to avoid recurrence"
+      }
+    ],
+    "constraints": [
+      "3 running days/week available: Tuesday, Friday, Sunday (long run)",
+      "Wants to add gym strength training as a beginner",
+      "Last 'easy run' on Strava (Jun 30) spent 78.5% of time in Zone 3 (Tempo) instead of Zone 2 -- deliberately keeping HR ceiling low this block to correct that pattern"
+    ]
+  },
+  "zones": {
+    "run": {
+      "hr": {
+        "lthr": null,
+        "source": "Strava (MaxHeartRate-based, 5-zone)",
+        "zones": [
+          {
+            "zone": 1,
+            "name": "Recovery",
+            "hrLow": 0,
+            "hrHigh": 125
+          },
+          {
+            "zone": 2,
+            "name": "Aerobic",
+            "hrLow": 126,
+            "hrHigh": 156
+          },
+          {
+            "zone": 3,
+            "name": "Tempo",
+            "hrLow": 157,
+            "hrHigh": 171
+          },
+          {
+            "zone": 4,
+            "name": "Threshold",
+            "hrLow": 172,
+            "hrHigh": 186
+          },
+          {
+            "zone": 5,
+            "name": "VO2 Max+",
+            "hrLow": 187,
+            "hrHigh": null
+          }
+        ]
+      },
+      "pace": {
+        "source": "Strava RacePace zones (from a 35:00 5K best effort) -- likely stale post-break; treat as reference only, not a hard target, until you retest",
+        "zones": [
+          {
+            "zone": 1,
+            "name": "Recovery",
+            "paceMinPerKm": "8:53+"
+          },
+          {
+            "zone": 2,
+            "name": "Aerobic",
+            "paceMinPerKm": "7:39-8:53"
+          },
+          {
+            "zone": 3,
+            "name": "Tempo",
+            "paceMinPerKm": "6:52-7:39"
+          },
+          {
+            "zone": 4,
+            "name": "Threshold",
+            "paceMinPerKm": "6:26-6:52"
+          },
+          {
+            "zone": 5,
+            "name": "VO2max",
+            "paceMinPerKm": "6:03-6:26"
+          },
+          {
+            "zone": 6,
+            "name": "Anaerobic",
+            "paceMinPerKm": "<6:03"
+          }
+        ]
+      },
+      "note": "For this whole 6-week block, run by HR/feel (Zone 1-2, HR under ~156bpm) rather than chasing these paces -- they were set before the break and may feel harder than expected right now."
+    }
+  },
+  "phases": [
+    {
+      "name": "Return to Run",
+      "startWeek": 1,
+      "endWeek": 3,
+      "focus": "Rebuild running consistency safely after the 8-9 week break, before adding any real load",
+      "weeklyHoursRange": {
+        "low": 1.5,
+        "high": 2.5
+      },
+      "keyWorkouts": [
+        "Easy Run",
+        "Easy Long Run"
+      ],
+      "physiologicalGoals": [
+        "Reactivate aerobic base",
+        "Let tendons/bones re-adapt to running load gradually",
+        "Rebuild the 3x/week habit"
+      ]
+    },
+    {
+      "name": "Aerobic Base Rebuild",
+      "startWeek": 4,
+      "endWeek": 6,
+      "focus": "Progress volume back toward pre-break peak, introduce light strides, cement the strength habit",
+      "weeklyHoursRange": {
+        "low": 2.5,
+        "high": 3.5
+      },
+      "keyWorkouts": [
+        "Easy Run + Strides",
+        "Progressive Long Run"
+      ],
+      "physiologicalGoals": [
+        "Mitochondrial density & capillarization gains",
+        "Restore prior aerobic capacity (back to 12km long run)",
+        "Prepare a base for future speed work"
+      ]
+    }
+  ],
+  "weeks": [
+    {
+      "weekNumber": 1,
+      "startDate": "2026-08-31",
+      "endDate": "2026-09-06",
+      "phase": "Return to Run",
+      "focus": "Easy Run x2 + Long Run (easy), 13.0km running + 2 strength sessions",
+      "targetHours": 2.5,
+      "isRecoveryWeek": false,
+      "days": [
+        {
+          "date": "2026-08-31",
+          "dayOfWeek": "Monday",
+          "workouts": [
+            {
+              "id": "w1-mon-strength",
+              "sport": "strength",
+              "type": "foundation",
+              "name": "Beginner Full-Body Strength",
+              "description": "Bodyweight foundation session #1-2: focus on learning the movements with good form, light effort.",
+              "durationMinutes": 35,
+              "humanReadable": "Warm-up: 5min light cardio + dynamic stretches\nCircuit (2-3 rounds):\n  - Bodyweight squats x 12-15\n  - Push-ups (knee or full) x 10-12\n  - Glute bridges x 12-15\n  - Standing single-leg balance reach x 8 each side\nCore finisher: Plank 3x30-45s, Dead bug 2x10 each side\nCool-down: 5min stretching",
+              "primaryZone": "N/A (strength)",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-01",
+          "dayOfWeek": "Tuesday",
+          "workouts": [
+            {
+              "id": "w1-tue-run",
+              "sport": "run",
+              "type": "aerobic",
+              "name": "Easy Run",
+              "description": "Very easy, conversational the whole way. Walk breaks are completely fine if HR creeps toward 156bpm \u2014 the only goal this week is rebuilding the habit, not pace.",
+              "durationMinutes": 25,
+              "distanceMeters": 4000,
+              "primaryZone": "Zone 1-2 (HR <156bpm)",
+              "humanReadable": "Very easy, conversational the whole way. Walk breaks are completely fine if HR creeps toward 156bpm \u2014 the only goal this week is rebuilding the habit, not pace.\nTarget: Zone 1-2, HR under ~156bpm. Distance ~4.0km.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-02",
+          "dayOfWeek": "Wednesday",
+          "workouts": [
+            {
+              "id": "w1-wed-rest",
+              "sport": "rest",
+              "type": "rest",
+              "name": "Rest Day",
+              "description": "Full rest, or a relaxed walk if you feel like moving.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-03",
+          "dayOfWeek": "Thursday",
+          "workouts": [
+            {
+              "id": "w1-thu-strength",
+              "sport": "strength",
+              "type": "foundation",
+              "name": "Beginner Full-Body Strength",
+              "description": "Bodyweight foundation session #1-2: focus on learning the movements with good form, light effort.",
+              "durationMinutes": 35,
+              "humanReadable": "Warm-up: 5min light cardio + dynamic stretches\nCircuit (2-3 rounds):\n  - Bodyweight squats x 12-15\n  - Push-ups (knee or full) x 10-12\n  - Glute bridges x 12-15\n  - Standing single-leg balance reach x 8 each side\nCore finisher: Plank 3x30-45s, Dead bug 2x10 each side\nCool-down: 5min stretching",
+              "primaryZone": "N/A (strength)",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-04",
+          "dayOfWeek": "Friday",
+          "workouts": [
+            {
+              "id": "w1-fri-run",
+              "sport": "run",
+              "type": "aerobic",
+              "name": "Easy Run",
+              "description": "Same as Tuesday: keep it easy and relaxed. If legs feel good, great \u2014 resist the urge to push.",
+              "durationMinutes": 25,
+              "distanceMeters": 4000,
+              "primaryZone": "Zone 1-2 (HR <156bpm)",
+              "humanReadable": "Same as Tuesday: keep it easy and relaxed. If legs feel good, great \u2014 resist the urge to push.\nTarget: Zone 1-2, HR under ~156bpm. Distance ~4.0km.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-05",
+          "dayOfWeek": "Saturday",
+          "workouts": [
+            {
+              "id": "w1-sat-rest",
+              "sport": "rest",
+              "type": "rest",
+              "name": "Rest Day",
+              "description": "Full rest, or a relaxed walk if you feel like moving.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-06",
+          "dayOfWeek": "Sunday",
+          "workouts": [
+            {
+              "id": "w1-sun-run",
+              "sport": "run",
+              "type": "long",
+              "name": "Long Run (easy)",
+              "description": "First long run back. Slow, steady, all Zone 1-2. Stop for walk breaks whenever you want \u2014 finishing relaxed matters more than the pace on the watch.",
+              "durationMinutes": 31,
+              "distanceMeters": 5000,
+              "primaryZone": "Zone 1-2 (HR <156bpm)",
+              "humanReadable": "First long run back. Slow, steady, all Zone 1-2. Stop for walk breaks whenever you want \u2014 finishing relaxed matters more than the pace on the watch.\nTarget: Zone 1-2, HR under ~156bpm. Distance ~5.0km.",
+              "completed": false
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "totalHours": 2.5,
+        "bySport": {
+          "run": {
+            "sessions": 3,
+            "hours": 1.4,
+            "km": 13.0
+          },
+          "strength": {
+            "sessions": 2,
+            "hours": 1.2
+          }
+        }
+      }
+    },
+    {
+      "weekNumber": 2,
+      "startDate": "2026-09-07",
+      "endDate": "2026-09-13",
+      "phase": "Return to Run",
+      "focus": "Easy Run x2 + Long Run (easy), 15.0km running + 2 strength sessions",
+      "targetHours": 2.7,
+      "isRecoveryWeek": false,
+      "days": [
+        {
+          "date": "2026-09-07",
+          "dayOfWeek": "Monday",
+          "workouts": [
+            {
+              "id": "w2-mon-strength",
+              "sport": "strength",
+              "type": "foundation",
+              "name": "Beginner Full-Body Strength",
+              "description": "Foundation session #3-4: same movements, aim for full ROM and controlled tempo.",
+              "durationMinutes": 35,
+              "humanReadable": "Warm-up: 5min light cardio + dynamic stretches\nCircuit (2-3 rounds):\n  - Bodyweight squats x 12-15\n  - Push-ups (knee or full) x 10-12\n  - Glute bridges x 12-15\n  - Standing single-leg balance reach x 8 each side\nCore finisher: Plank 3x30-45s, Dead bug 2x10 each side\nCool-down: 5min stretching",
+              "primaryZone": "N/A (strength)",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-08",
+          "dayOfWeek": "Tuesday",
+          "workouts": [
+            {
+              "id": "w2-tue-run",
+              "sport": "run",
+              "type": "aerobic",
+              "name": "Easy Run",
+              "description": "Same easy effort as last week, just a touch more distance. Full conversations should stay possible throughout.",
+              "durationMinutes": 28,
+              "distanceMeters": 4500,
+              "primaryZone": "Zone 1-2 (HR <156bpm)",
+              "humanReadable": "Same easy effort as last week, just a touch more distance. Full conversations should stay possible throughout.\nTarget: Zone 1-2, HR under ~156bpm. Distance ~4.5km.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-09",
+          "dayOfWeek": "Wednesday",
+          "workouts": [
+            {
+              "id": "w2-wed-rest",
+              "sport": "rest",
+              "type": "rest",
+              "name": "Rest Day",
+              "description": "Full rest, or a relaxed walk if you feel like moving.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-10",
+          "dayOfWeek": "Thursday",
+          "workouts": [
+            {
+              "id": "w2-thu-strength",
+              "sport": "strength",
+              "type": "foundation",
+              "name": "Beginner Full-Body Strength",
+              "description": "Foundation session #3-4: same movements, aim for full ROM and controlled tempo.",
+              "durationMinutes": 35,
+              "humanReadable": "Warm-up: 5min light cardio + dynamic stretches\nCircuit (2-3 rounds):\n  - Bodyweight squats x 12-15\n  - Push-ups (knee or full) x 10-12\n  - Glute bridges x 12-15\n  - Standing single-leg balance reach x 8 each side\nCore finisher: Plank 3x30-45s, Dead bug 2x10 each side\nCool-down: 5min stretching",
+              "primaryZone": "N/A (strength)",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-11",
+          "dayOfWeek": "Friday",
+          "workouts": [
+            {
+              "id": "w2-fri-run",
+              "sport": "run",
+              "type": "aerobic",
+              "name": "Easy Run",
+              "description": "Easy aerobic run. Notice if this feels more natural than last week \u2014 that's the fitness coming back.",
+              "durationMinutes": 28,
+              "distanceMeters": 4500,
+              "primaryZone": "Zone 1-2 (HR <156bpm)",
+              "humanReadable": "Easy aerobic run. Notice if this feels more natural than last week \u2014 that's the fitness coming back.\nTarget: Zone 1-2, HR under ~156bpm. Distance ~4.5km.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-12",
+          "dayOfWeek": "Saturday",
+          "workouts": [
+            {
+              "id": "w2-sat-rest",
+              "sport": "rest",
+              "type": "rest",
+              "name": "Rest Day",
+              "description": "Full rest, or a relaxed walk if you feel like moving.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-13",
+          "dayOfWeek": "Sunday",
+          "workouts": [
+            {
+              "id": "w2-sun-run",
+              "sport": "run",
+              "type": "long",
+              "name": "Long Run (easy)",
+              "description": "Building the long run gradually. Keep the first half especially conservative; it's fine to feel like you could go faster.",
+              "durationMinutes": 37,
+              "distanceMeters": 6000,
+              "primaryZone": "Zone 1-2 (HR <156bpm)",
+              "humanReadable": "Building the long run gradually. Keep the first half especially conservative; it's fine to feel like you could go faster.\nTarget: Zone 1-2, HR under ~156bpm. Distance ~6.0km.",
+              "completed": false
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "totalHours": 2.7,
+        "bySport": {
+          "run": {
+            "sessions": 3,
+            "hours": 1.6,
+            "km": 15.0
+          },
+          "strength": {
+            "sessions": 2,
+            "hours": 1.2
+          }
+        }
+      }
+    },
+    {
+      "weekNumber": 3,
+      "startDate": "2026-09-14",
+      "endDate": "2026-09-20",
+      "phase": "Return to Run",
+      "focus": "Easy Run x2 + Long Run (easy), 17.0km running + 2 strength sessions",
+      "targetHours": 2.9,
+      "isRecoveryWeek": false,
+      "days": [
+        {
+          "date": "2026-09-14",
+          "dayOfWeek": "Monday",
+          "workouts": [
+            {
+              "id": "w3-mon-strength",
+              "sport": "strength",
+              "type": "foundation",
+              "name": "Beginner Full-Body Strength",
+              "description": "Foundation session #5-6: small bump in reps if last week felt comfortable (aim for the top of the 12-15 rep range).",
+              "durationMinutes": 35,
+              "humanReadable": "Warm-up: 5min light cardio + dynamic stretches\nCircuit (2-3 rounds):\n  - Bodyweight squats x 12-15\n  - Push-ups (knee or full) x 10-12\n  - Glute bridges x 12-15\n  - Standing single-leg balance reach x 8 each side\nCore finisher: Plank 3x30-45s, Dead bug 2x10 each side\nCool-down: 5min stretching",
+              "primaryZone": "N/A (strength)",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-15",
+          "dayOfWeek": "Tuesday",
+          "workouts": [
+            {
+              "id": "w3-tue-run",
+              "sport": "run",
+              "type": "aerobic",
+              "name": "Easy Run",
+              "description": "Easy effort, Zone 1-2. This is now roughly your pre-break easy-run distance \u2014 notice how your legs feel compared to week 1.",
+              "durationMinutes": 31,
+              "distanceMeters": 5000,
+              "primaryZone": "Zone 1-2 (HR <156bpm)",
+              "humanReadable": "Easy effort, Zone 1-2. This is now roughly your pre-break easy-run distance \u2014 notice how your legs feel compared to week 1.\nTarget: Zone 1-2, HR under ~156bpm. Distance ~5.0km.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-16",
+          "dayOfWeek": "Wednesday",
+          "workouts": [
+            {
+              "id": "w3-wed-rest",
+              "sport": "rest",
+              "type": "rest",
+              "name": "Rest Day",
+              "description": "Full rest, or a relaxed walk if you feel like moving.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-17",
+          "dayOfWeek": "Thursday",
+          "workouts": [
+            {
+              "id": "w3-thu-strength",
+              "sport": "strength",
+              "type": "foundation",
+              "name": "Beginner Full-Body Strength",
+              "description": "Foundation session #5-6: small bump in reps if last week felt comfortable (aim for the top of the 12-15 rep range).",
+              "durationMinutes": 35,
+              "humanReadable": "Warm-up: 5min light cardio + dynamic stretches\nCircuit (2-3 rounds):\n  - Bodyweight squats x 12-15\n  - Push-ups (knee or full) x 10-12\n  - Glute bridges x 12-15\n  - Standing single-leg balance reach x 8 each side\nCore finisher: Plank 3x30-45s, Dead bug 2x10 each side\nCool-down: 5min stretching",
+              "primaryZone": "N/A (strength)",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-18",
+          "dayOfWeek": "Friday",
+          "workouts": [
+            {
+              "id": "w3-fri-run",
+              "sport": "run",
+              "type": "aerobic",
+              "name": "Easy Run",
+              "description": "Steady easy run. Keep HR under ~156bpm \u2014 that Strava zone data showed your 'easy' runs tend to drift into Zone 3, so treat this as a deliberate correction.",
+              "durationMinutes": 31,
+              "distanceMeters": 5000,
+              "primaryZone": "Zone 1-2 (HR <156bpm)",
+              "humanReadable": "Steady easy run. Keep HR under ~156bpm \u2014 that Strava zone data showed your 'easy' runs tend to drift into Zone 3, so treat this as a deliberate correction.\nTarget: Zone 1-2, HR under ~156bpm. Distance ~5.0km.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-19",
+          "dayOfWeek": "Saturday",
+          "workouts": [
+            {
+              "id": "w3-sat-rest",
+              "sport": "rest",
+              "type": "rest",
+              "name": "Rest Day",
+              "description": "Full rest, or a relaxed walk if you feel like moving.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-20",
+          "dayOfWeek": "Sunday",
+          "workouts": [
+            {
+              "id": "w3-sun-run",
+              "sport": "run",
+              "type": "long",
+              "name": "Long Run (easy)",
+              "description": "Longest run since the break. Negative-split if it feels good (slightly faster second half), but only if effort stays easy.",
+              "durationMinutes": 43,
+              "distanceMeters": 7000,
+              "primaryZone": "Zone 1-2 (HR <156bpm)",
+              "humanReadable": "Longest run since the break. Negative-split if it feels good (slightly faster second half), but only if effort stays easy.\nTarget: Zone 1-2, HR under ~156bpm. Distance ~7.0km.",
+              "completed": false
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "totalHours": 2.9,
+        "bySport": {
+          "run": {
+            "sessions": 3,
+            "hours": 1.8,
+            "km": 17.0
+          },
+          "strength": {
+            "sessions": 2,
+            "hours": 1.2
+          }
+        }
+      }
+    },
+    {
+      "weekNumber": 4,
+      "startDate": "2026-09-21",
+      "endDate": "2026-09-27",
+      "phase": "Aerobic Base Rebuild",
+      "focus": "Easy Run x2 + Long Run (easy), 19.0km running + 2 strength sessions",
+      "targetHours": 3.1,
+      "isRecoveryWeek": false,
+      "days": [
+        {
+          "date": "2026-09-21",
+          "dayOfWeek": "Monday",
+          "workouts": [
+            {
+              "id": "w4-mon-strength",
+              "sport": "strength",
+              "type": "foundation",
+              "name": "Beginner Full-Body Strength",
+              "description": "Foundation session #7-8: continue bodyweight circuit, add a light external load (dumbbells/kettlebell) only if bodyweight feels easy.",
+              "durationMinutes": 35,
+              "humanReadable": "Warm-up: 5min light cardio + dynamic stretches\nCircuit (2-3 rounds):\n  - Bodyweight squats x 12-15\n  - Push-ups (knee or full) x 10-12\n  - Glute bridges x 12-15\n  - Standing single-leg balance reach x 8 each side\nCore finisher: Plank 3x30-45s, Dead bug 2x10 each side\nCool-down: 5min stretching",
+              "primaryZone": "N/A (strength)",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-22",
+          "dayOfWeek": "Tuesday",
+          "workouts": [
+            {
+              "id": "w4-tue-run",
+              "sport": "run",
+              "type": "aerobic",
+              "name": "Easy Run",
+              "description": "Easy aerobic run, Zone 2 ceiling ~156bpm.",
+              "durationMinutes": 34,
+              "distanceMeters": 5500,
+              "primaryZone": "Zone 1-2 (HR <156bpm)",
+              "humanReadable": "Easy aerobic run, Zone 2 ceiling ~156bpm.\nTarget: Zone 1-2, HR under ~156bpm. Distance ~5.5km.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-23",
+          "dayOfWeek": "Wednesday",
+          "workouts": [
+            {
+              "id": "w4-wed-rest",
+              "sport": "rest",
+              "type": "rest",
+              "name": "Rest Day",
+              "description": "Full rest, or a relaxed walk if you feel like moving.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-24",
+          "dayOfWeek": "Thursday",
+          "workouts": [
+            {
+              "id": "w4-thu-strength",
+              "sport": "strength",
+              "type": "foundation",
+              "name": "Beginner Full-Body Strength",
+              "description": "Foundation session #7-8: continue bodyweight circuit, add a light external load (dumbbells/kettlebell) only if bodyweight feels easy.",
+              "durationMinutes": 35,
+              "humanReadable": "Warm-up: 5min light cardio + dynamic stretches\nCircuit (2-3 rounds):\n  - Bodyweight squats x 12-15\n  - Push-ups (knee or full) x 10-12\n  - Glute bridges x 12-15\n  - Standing single-leg balance reach x 8 each side\nCore finisher: Plank 3x30-45s, Dead bug 2x10 each side\nCool-down: 5min stretching",
+              "primaryZone": "N/A (strength)",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-25",
+          "dayOfWeek": "Friday",
+          "workouts": [
+            {
+              "id": "w4-fri-run",
+              "sport": "run",
+              "type": "aerobic",
+              "name": "Easy Run + Strides",
+              "description": "Easy run with 4 x 20sec relaxed strides (NOT sprints) at the end, full recovery between. First taste of faster turnover \u2014 think 'smooth and quick', not hard.",
+              "durationMinutes": 34,
+              "distanceMeters": 5500,
+              "primaryZone": "Zone 1-2 (HR <156bpm)",
+              "humanReadable": "Easy run with 4 x 20sec relaxed strides (NOT sprints) at the end, full recovery between. First taste of faster turnover \u2014 think 'smooth and quick', not hard.\nTarget: Zone 1-2, HR under ~156bpm. Distance ~5.5km.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-26",
+          "dayOfWeek": "Saturday",
+          "workouts": [
+            {
+              "id": "w4-sat-rest",
+              "sport": "rest",
+              "type": "rest",
+              "name": "Rest Day",
+              "description": "Full rest, or a relaxed walk if you feel like moving.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-27",
+          "dayOfWeek": "Sunday",
+          "workouts": [
+            {
+              "id": "w4-sun-run",
+              "sport": "run",
+              "type": "long",
+              "name": "Long Run (easy)",
+              "description": "Progressive week for the long run. Still Zone 2 throughout \u2014 this is the first run past your pre-break comfort zone, so stay patient.",
+              "durationMinutes": 50,
+              "distanceMeters": 8000,
+              "primaryZone": "Zone 1-2 (HR <156bpm)",
+              "humanReadable": "Progressive week for the long run. Still Zone 2 throughout \u2014 this is the first run past your pre-break comfort zone, so stay patient.\nTarget: Zone 1-2, HR under ~156bpm. Distance ~8.0km.",
+              "completed": false
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "totalHours": 3.1,
+        "bySport": {
+          "run": {
+            "sessions": 3,
+            "hours": 2.0,
+            "km": 19.0
+          },
+          "strength": {
+            "sessions": 2,
+            "hours": 1.2
+          }
+        }
+      }
+    },
+    {
+      "weekNumber": 5,
+      "startDate": "2026-09-28",
+      "endDate": "2026-10-04",
+      "phase": "Aerobic Base Rebuild",
+      "focus": "Easy Run x2 + Long Run (easy), 22.0km running + 2 strength sessions",
+      "targetHours": 3.4,
+      "isRecoveryWeek": false,
+      "days": [
+        {
+          "date": "2026-09-28",
+          "dayOfWeek": "Monday",
+          "workouts": [
+            {
+              "id": "w5-mon-strength",
+              "sport": "strength",
+              "type": "foundation",
+              "name": "Beginner Full-Body Strength",
+              "description": "Foundation session #9-10: aim for 3 solid sets across the circuit; keep form quality high over adding load.",
+              "durationMinutes": 35,
+              "humanReadable": "Warm-up: 5min light cardio + dynamic stretches\nCircuit (2-3 rounds):\n  - Bodyweight squats x 12-15\n  - Push-ups (knee or full) x 10-12\n  - Glute bridges x 12-15\n  - Standing single-leg balance reach x 8 each side\nCore finisher: Plank 3x30-45s, Dead bug 2x10 each side\nCool-down: 5min stretching",
+              "primaryZone": "N/A (strength)",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-29",
+          "dayOfWeek": "Tuesday",
+          "workouts": [
+            {
+              "id": "w5-tue-run",
+              "sport": "run",
+              "type": "aerobic",
+              "name": "Easy Run",
+              "description": "Easy aerobic run, Zone 2.",
+              "durationMinutes": 37,
+              "distanceMeters": 6000,
+              "primaryZone": "Zone 1-2 (HR <156bpm)",
+              "humanReadable": "Easy aerobic run, Zone 2.\nTarget: Zone 1-2, HR under ~156bpm. Distance ~6.0km.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-09-30",
+          "dayOfWeek": "Wednesday",
+          "workouts": [
+            {
+              "id": "w5-wed-rest",
+              "sport": "rest",
+              "type": "rest",
+              "name": "Rest Day",
+              "description": "Full rest, or a relaxed walk if you feel like moving.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-10-01",
+          "dayOfWeek": "Thursday",
+          "workouts": [
+            {
+              "id": "w5-thu-strength",
+              "sport": "strength",
+              "type": "foundation",
+              "name": "Beginner Full-Body Strength",
+              "description": "Foundation session #9-10: aim for 3 solid sets across the circuit; keep form quality high over adding load.",
+              "durationMinutes": 35,
+              "humanReadable": "Warm-up: 5min light cardio + dynamic stretches\nCircuit (2-3 rounds):\n  - Bodyweight squats x 12-15\n  - Push-ups (knee or full) x 10-12\n  - Glute bridges x 12-15\n  - Standing single-leg balance reach x 8 each side\nCore finisher: Plank 3x30-45s, Dead bug 2x10 each side\nCool-down: 5min stretching",
+              "primaryZone": "N/A (strength)",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-10-02",
+          "dayOfWeek": "Friday",
+          "workouts": [
+            {
+              "id": "w5-fri-run",
+              "sport": "run",
+              "type": "aerobic",
+              "name": "Easy Run + Strides",
+              "description": "Easy run with 6 x 20sec relaxed strides at the end. Legs should be starting to feel springy again.",
+              "durationMinutes": 37,
+              "distanceMeters": 6000,
+              "primaryZone": "Zone 1-2 (HR <156bpm)",
+              "humanReadable": "Easy run with 6 x 20sec relaxed strides at the end. Legs should be starting to feel springy again.\nTarget: Zone 1-2, HR under ~156bpm. Distance ~6.0km.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-10-03",
+          "dayOfWeek": "Saturday",
+          "workouts": [
+            {
+              "id": "w5-sat-rest",
+              "sport": "rest",
+              "type": "rest",
+              "name": "Rest Day",
+              "description": "Full rest, or a relaxed walk if you feel like moving.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-10-04",
+          "dayOfWeek": "Sunday",
+          "workouts": [
+            {
+              "id": "w5-sun-run",
+              "sport": "run",
+              "type": "long",
+              "name": "Long Run (easy)",
+              "description": "Nearly back to peak distance. Keep it aerobic and unhurried \u2014 this is about time on feet, not pace.",
+              "durationMinutes": 62,
+              "distanceMeters": 10000,
+              "primaryZone": "Zone 1-2 (HR <156bpm)",
+              "humanReadable": "Nearly back to peak distance. Keep it aerobic and unhurried \u2014 this is about time on feet, not pace.\nTarget: Zone 1-2, HR under ~156bpm. Distance ~10.0km.",
+              "completed": false
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "totalHours": 3.4,
+        "bySport": {
+          "run": {
+            "sessions": 3,
+            "hours": 2.3,
+            "km": 22.0
+          },
+          "strength": {
+            "sessions": 2,
+            "hours": 1.2
+          }
+        }
+      }
+    },
+    {
+      "weekNumber": 6,
+      "startDate": "2026-10-05",
+      "endDate": "2026-10-11",
+      "phase": "Aerobic Base Rebuild",
+      "focus": "Easy Run x2 + Long Run (progression finish), 24.0km running + 2 strength sessions",
+      "targetHours": 3.6,
+      "isRecoveryWeek": false,
+      "days": [
+        {
+          "date": "2026-10-05",
+          "dayOfWeek": "Monday",
+          "workouts": [
+            {
+              "id": "w6-mon-strength",
+              "sport": "strength",
+              "type": "foundation",
+              "name": "Beginner Full-Body Strength",
+              "description": "Foundation session #11-12: consistency check-in \u2014 you've now built a 6-week strength habit. Keep the same structure or ask your gym for a light program refresh.",
+              "durationMinutes": 35,
+              "humanReadable": "Warm-up: 5min light cardio + dynamic stretches\nCircuit (2-3 rounds):\n  - Bodyweight squats x 12-15\n  - Push-ups (knee or full) x 10-12\n  - Glute bridges x 12-15\n  - Standing single-leg balance reach x 8 each side\nCore finisher: Plank 3x30-45s, Dead bug 2x10 each side\nCool-down: 5min stretching",
+              "primaryZone": "N/A (strength)",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-10-06",
+          "dayOfWeek": "Tuesday",
+          "workouts": [
+            {
+              "id": "w6-tue-run",
+              "sport": "run",
+              "type": "aerobic",
+              "name": "Easy Run",
+              "description": "Easy aerobic run, Zone 2. Freshen up slightly ahead of Sunday's milestone long run.",
+              "durationMinutes": 37,
+              "distanceMeters": 6000,
+              "primaryZone": "Zone 1-2 (HR <156bpm)",
+              "humanReadable": "Easy aerobic run, Zone 2. Freshen up slightly ahead of Sunday's milestone long run.\nTarget: Zone 1-2, HR under ~156bpm. Distance ~6.0km.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-10-07",
+          "dayOfWeek": "Wednesday",
+          "workouts": [
+            {
+              "id": "w6-wed-rest",
+              "sport": "rest",
+              "type": "rest",
+              "name": "Rest Day",
+              "description": "Full rest, or a relaxed walk if you feel like moving.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-10-08",
+          "dayOfWeek": "Thursday",
+          "workouts": [
+            {
+              "id": "w6-thu-strength",
+              "sport": "strength",
+              "type": "foundation",
+              "name": "Beginner Full-Body Strength",
+              "description": "Foundation session #11-12: consistency check-in \u2014 you've now built a 6-week strength habit. Keep the same structure or ask your gym for a light program refresh.",
+              "durationMinutes": 35,
+              "humanReadable": "Warm-up: 5min light cardio + dynamic stretches\nCircuit (2-3 rounds):\n  - Bodyweight squats x 12-15\n  - Push-ups (knee or full) x 10-12\n  - Glute bridges x 12-15\n  - Standing single-leg balance reach x 8 each side\nCore finisher: Plank 3x30-45s, Dead bug 2x10 each side\nCool-down: 5min stretching",
+              "primaryZone": "N/A (strength)",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-10-09",
+          "dayOfWeek": "Friday",
+          "workouts": [
+            {
+              "id": "w6-fri-run",
+              "sport": "run",
+              "type": "aerobic",
+              "name": "Easy Run + Strides",
+              "description": "Easy run with 6 x 20sec strides. Light legs going into the weekend.",
+              "durationMinutes": 37,
+              "distanceMeters": 6000,
+              "primaryZone": "Zone 1-2 (HR <156bpm)",
+              "humanReadable": "Easy run with 6 x 20sec strides. Light legs going into the weekend.\nTarget: Zone 1-2, HR under ~156bpm. Distance ~6.0km.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-10-10",
+          "dayOfWeek": "Saturday",
+          "workouts": [
+            {
+              "id": "w6-sat-rest",
+              "sport": "rest",
+              "type": "rest",
+              "name": "Rest Day",
+              "description": "Full rest, or a relaxed walk if you feel like moving.",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "date": "2026-10-11",
+          "dayOfWeek": "Sunday",
+          "workouts": [
+            {
+              "id": "w6-sun-run",
+              "sport": "run",
+              "type": "long",
+              "name": "Long Run (progression finish)",
+              "description": "Back to your pre-break peak distance! Run the first 9km easy (Zone 2), then let the final 3km drift naturally faster (Zone 2-3) if it feels good \u2014 a nice marker of where your fitness stands.",
+              "durationMinutes": 74,
+              "distanceMeters": 12000,
+              "primaryZone": "Zone 1-2 (HR <156bpm)",
+              "humanReadable": "Back to your pre-break peak distance! Run the first 9km easy (Zone 2), then let the final 3km drift naturally faster (Zone 2-3) if it feels good \u2014 a nice marker of where your fitness stands.\nTarget: Zone 1-2, HR under ~156bpm. Distance ~12.0km.",
+              "completed": false
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "totalHours": 3.6,
+        "bySport": {
+          "run": {
+            "sessions": 3,
+            "hours": 2.5,
+            "km": 24.0
+          },
+          "strength": {
+            "sessions": 2,
+            "hours": 1.2
+          }
+        }
+      }
+    }
+  ],
+  "raceStrategy": null
+}
