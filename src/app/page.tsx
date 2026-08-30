@@ -21,6 +21,7 @@ export default async function ThisWeekPage() {
   }
 
   const todayStr = new Date().toISOString().slice(0, 10);
+  const activityWorkouts = week.workouts.filter((w) => w.sport !== "rest");
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -42,8 +43,8 @@ export default async function ThisWeekPage() {
         </Card>
       )}
 
-      <div className="mt-6 grid grid-cols-2 gap-3 min-[560px]:grid-cols-4 lg:grid-cols-7">
-        {week.workouts.map((w) => (
+      <div className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
+        {activityWorkouts.map((w) => (
           <DayCard key={w.id} workout={w} isToday={w.date === todayStr} />
         ))}
       </div>

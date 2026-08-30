@@ -6,7 +6,6 @@ import type { ThisWeekWorkout } from "@/lib/dashboard/queries";
 const SPORT_LABEL: Record<string, string> = {
   run: "Run",
   strength: "Strength",
-  rest: "Rest",
   bike: "Ride",
 };
 
@@ -21,16 +20,6 @@ function zonePillLabel(primaryZone: string | null): string | null {
 
 export function DayCard({ workout, isToday }: { workout: ThisWeekWorkout; isToday: boolean }) {
   const w = workout;
-
-  if (w.sport === "rest") {
-    return (
-      <div className="flex min-h-[150px] flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border-strong p-3 text-center">
-        <span className="text-[10.5px] font-bold uppercase tracking-wide text-ink-muted">{shortDay(w.dayOfWeek)}</span>
-        <span className="text-xs font-medium text-ink-muted">Rest</span>
-      </div>
-    );
-  }
-
   const zoneLabel = zonePillLabel(w.primaryZone);
 
   return (
