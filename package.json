@@ -13,7 +13,8 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",
     "strava:backfill": "tsx scripts/backfill-activities.ts",
-    "webhook:setup": "tsx scripts/setup-webhook.ts"
+    "webhook:setup": "tsx scripts/setup-webhook.ts",
+    "cron:weekly": "tsx scripts/cron-weekly.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",
