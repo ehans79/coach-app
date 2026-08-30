@@ -12,6 +12,19 @@ Long-run progression: never increase by more than ~2-3km/week.
 Weekly structure: no same-sport back-to-back hard days; 48hr between quality sessions; easy day after long runs; consistent weekly schedule.
 Intensity distribution (polarized): 75-80% of weekly volume easy (Zone 1-2), 5-10% moderate (Zone 3 — deliberately minimized), 15-20% hard (Zone 4-5).`;
 
+const STRENGTH_REFERENCE = `Foundation-level session structure (beginner, base phase — the athlete's current level): 2-3 sets x 12-15 reps, bodyweight only — add light dumbbells/kettlebell only once bodyweight feels easy across all sets. Every session includes core work: Plank 3x45-60s, Side plank 2x30s each side, Dead bug 2x12 each side, Bird dog 2x10 each side. Include run-specific focus exercises across sessions: lunges, Romanian deadlifts (bodyweight/light-load for a beginner), calf raises, single-leg work (single-leg balance, step-ups).
+Sample 35-45min session — this is the level of exercise/sets/reps detail every generated strength day's description and humanReadable fields must have, never just a name and duration:
+Warm-up: 5min light cardio, dynamic stretches
+Circuit (2-3 rounds):
+  - Bodyweight squats x 12-15
+  - Push-ups (knee or full) x 10-12
+  - Glute bridges x 12-15
+  - Single-leg Romanian deadlift x 8 each side
+  - Step-ups x 10 each leg
+Core finisher: Plank 3x45-60s, Dead bug 2x10 each side, Side plank 2x30s each side
+Cool-down: 5min stretching
+Progression across weeks: keep the same movement patterns — progress by adding a round, moving toward the top of the rep range, or tightening form/tempo. Only add a light external load once bodyweight feels genuinely easy across all sets; never jump straight to heavier weights as the first progression.`;
+
 function findWeekContainingDate(weeks: PlanWeekJson[], dateStr: string): PlanWeekJson | undefined {
   return weeks.find((w) => w.startDate <= dateStr && dateStr <= w.endDate);
 }
@@ -92,7 +105,12 @@ const SYSTEM_PROMPT = `You are Edu's personal running coach, regenerating next w
 Coaching reference rules to apply:
 ${COACHING_REFERENCE}
 
+Strength/gym-day reference — use this as a library of exercises and progression logic (not a template to copy verbatim every week), the same way you use the coaching reference above for run days:
+${STRENGTH_REFERENCE}
+
 You will be given the athlete's assessment/constraints, current zones, the current training phase, a detailed report of how last week went, and a set of hard guardrails already computed by the app (max volume change, recovery-week status, max long-run increase) — treat the guardrails as non-negotiable caps, not suggestions. Your job is to fill in the specific sessions within those caps and explain the reasoning in the rationale field, in the athlete's own coach's voice — the kind of thing that would appear on a dashboard under "why did my plan change this week."
+
+Every strength/gym-type workout must get the same level of concrete detail as a run workout: the "description" and "humanReadable" fields need actual exercises with sets/reps (warm-up, circuit, core finisher, cool-down), never just a session name and duration. Do not generate a generic placeholder like "Beginner Full-Body Strength, 35 minutes" with no exercises listed.
 
 Output metric units only (km/m, min:sec/km, °C) — never imperial.`;
 
