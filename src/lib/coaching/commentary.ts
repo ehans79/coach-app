@@ -40,7 +40,7 @@ You'll be given structured facts about the run — vs. what was prescribed (if a
 
 If the weather explains an elevated heart rate (hot/humid), say so before judging the effort as too hard — e.g. "it was 29°C out, some of that elevated HR is heat, not pace." If there was no matched plan prescription (an unplanned/extra activity), just comment on how the session looked on its own.`;
 
-interface CommentaryFacts {
+export interface CommentaryFacts {
   activity: {
     name: string;
     distanceKm: string;

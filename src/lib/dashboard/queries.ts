@@ -2,6 +2,7 @@ import { desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { activities, activityComments, planWorkouts, plans, zoneVersions } from "@/lib/db/schema";
 import type { PlanDocument, PlanWeekJson } from "@/lib/coaching/plan";
+import type { CommentaryFacts } from "@/lib/coaching/commentary";
 
 function mondayOf(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00Z`);
@@ -189,6 +190,63 @@ export async function getActivityFeed(limit = 30): Promise<FeedActivity[]> {
         : null,
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Activity detail
+// ---------------------------------------------------------------------------
+
+export interface ActivityDetail {
+  id: number;
+  name: string;
+  sportType: string;
+  startDateLocal: Date;
+  distanceMeters: number | null;
+  movingTimeSeconds: number | null;
+  totalElevationGainMeters: number | null;
+  averageHeartrate: number | null;
+  maxHeartrate: number | null;
+  averageCadence: number | null;
+  sufferScore: number | null;
+  comment: {
+    commentText: string;
+    flag: "none" | "watch" | "correct";
+    zoneAdherence: "ok" | "drifted" | "na";
+    facts: CommentaryFacts | null;
+  } | null;
+}
+
+export async function getActivityDetail(id: number): Promise<ActivityDetail | null> {
+  const [activity] = await db.select().from(activities).where(eq(activities.id, id)).limit(1);
+  if (!activity) return null;
+
+  const [comment] = await db
+    .select()
+    .from(activityComments)
+    .where(eq(activityComments.activityId, id))
+    .limit(1);
+
+  return {
+    id: activity.id,
+    name: activity.name,
+    sportType: activity.sportType,
+    startDateLocal: activity.startDateLocal,
+    distanceMeters: activity.distanceMeters,
+    movingTimeSeconds: activity.movingTimeSeconds,
+    totalElevationGainMeters: activity.totalElevationGainMeters,
+    averageHeartrate: activity.averageHeartrate,
+    maxHeartrate: activity.maxHeartrate,
+    averageCadence: activity.averageCadence,
+    sufferScore: activity.sufferScore,
+    comment: comment
+      ? {
+          commentText: comment.commentText,
+          flag: comment.flag,
+          zoneAdherence: comment.zoneAdherence,
+          facts: (comment.facts as CommentaryFacts | null) ?? null,
+        }
+      : null,
+  };
 }
 
 // ---------------------------------------------------------------------------
