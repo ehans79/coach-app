@@ -64,16 +64,28 @@ export function WeeklyDebrief(props: WeeklyDebriefProps) {
           <Section
             style={{
               backgroundColor: colors.surface,
-              border: `1px solid ${colors.border}`,
+              borderTop: `1px solid ${colors.border}`,
+              borderRight: `1px solid ${colors.border}`,
+              borderBottom: `1px solid ${colors.border}`,
+              borderLeft: `4px solid ${theme.accent}`,
               borderRadius: 12,
               padding: 24,
               marginBottom: 16,
             }}
           >
-            <Text style={{ fontSize: 12, color: colors.inkMuted, margin: 0, textTransform: "uppercase" }}>
-              {props.weekRangeLabel}
-            </Text>
-            <Heading style={{ fontSize: 20, color: colors.inkPrimary, margin: "6px 0 0" }}>
+            <table role="presentation" cellPadding={0} cellSpacing={0} style={{ marginBottom: 8 }}>
+              <tr>
+                <td style={{ paddingRight: 6 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: theme.accent }} />
+                </td>
+                <td>
+                  <Text style={{ fontSize: 12, fontWeight: 700, color: colors.inkMuted, margin: 0, textTransform: "uppercase" }}>
+                    {props.weekRangeLabel}
+                  </Text>
+                </td>
+              </tr>
+            </table>
+            <Heading style={{ fontSize: 26, fontWeight: 800, lineHeight: "1.2", letterSpacing: "-0.01em", color: colors.inkPrimary, margin: 0 }}>
               {props.weekVerdict}
             </Heading>
           </Section>
@@ -87,7 +99,7 @@ export function WeeklyDebrief(props: WeeklyDebriefProps) {
               marginBottom: 16,
             }}
           >
-            <Heading as="h2" style={{ fontSize: 14, color: colors.inkPrimary, margin: "0 0 12px" }}>
+            <Heading as="h2" style={{ fontSize: 14, fontWeight: 700, color: colors.inkPrimary, margin: "0 0 12px" }}>
               This week
             </Heading>
 
@@ -158,7 +170,7 @@ export function WeeklyDebrief(props: WeeklyDebriefProps) {
               marginBottom: 16,
             }}
           >
-            <Heading as="h2" style={{ fontSize: 14, color: colors.inkPrimary, margin: "0 0 12px" }}>
+            <Heading as="h2" style={{ fontSize: 14, fontWeight: 700, color: colors.inkPrimary, margin: "0 0 12px" }}>
               Next week
             </Heading>
             {props.nextWeekSessions.map((s) => (
