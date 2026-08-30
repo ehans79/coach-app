@@ -4,6 +4,7 @@ import { getEnv } from "@/lib/env";
 import { db } from "@/lib/db/client";
 import { activities } from "@/lib/db/schema";
 import { syncSingleActivityDetail } from "@/lib/sync/activities";
+import { generateCommentaryForActivity } from "@/lib/coaching/commentary";
 
 interface StravaWebhookEvent {
   aspect_type: "create" | "update" | "delete";
@@ -50,8 +51,7 @@ export async function POST(request: NextRequest) {
       after(async () => {
         try {
           await syncSingleActivityDetail(event.object_id);
-          // Per-activity commentary generation hooks in here once that
-          // feature is built (Phase 2).
+          await generateCommentaryForActivity(event.object_id);
         } catch (err) {
           console.error(`Failed to process Strava webhook event for activity ${event.object_id}`, err);
         }

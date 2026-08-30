@@ -94,14 +94,19 @@ export async function syncRecentActivities(): Promise<{ count: number }> {
 
   const count = await upsertActivitiesSince(after);
 
+  // Raw sql`` results bypass Drizzle's column mapFromDriverValue — the
+  // driver hands back a timestamptz as a string here, not a Date, whatever
+  // the sql<T> type annotation claims. Parse it explicitly.
   const [latest] = await db
-    .select({ maxStart: sql<Date | null>`max(${activities.startDate})` })
+    .select({ maxStart: sql<string | null>`max(${activities.startDate})` })
     .from(activities);
 
   const newState = {
     id: SYNC_ID,
     lastSyncedAt: new Date(),
-    lastActivityStartDate: latest?.maxStart ?? state?.lastActivityStartDate ?? null,
+    lastActivityStartDate: latest?.maxStart
+      ? new Date(latest.maxStart)
+      : (state?.lastActivityStartDate ?? null),
   };
   await db
     .insert(syncState)

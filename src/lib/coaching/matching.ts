@@ -1,0 +1,24 @@
+import { and, eq } from "drizzle-orm";
+import { db } from "@/lib/db/client";
+import { planWorkouts, plans } from "@/lib/db/schema";
+
+/**
+ * Finds the prescribed session for a run: the plan_workouts row on the
+ * currently active plan whose date matches the activity's local start date.
+ * `startDateLocal` must be the Date parsed from Strava's start_date_local
+ * (which encodes local wall-clock time with a "Z" suffix) so the UTC date
+ * component read back out is actually the athlete's local calendar date.
+ * Returns null for an unplanned/extra run.
+ */
+export async function findMatchingPlanWorkout(startDateLocal: Date) {
+  const dateStr = startDateLocal.toISOString().slice(0, 10);
+  const [row] = await db
+    .select({ workout: planWorkouts })
+    .from(planWorkouts)
+    .innerJoin(plans, eq(planWorkouts.planId, plans.id))
+    .where(
+      and(eq(plans.isActive, true), eq(planWorkouts.date, dateStr), eq(planWorkouts.sport, "run"))
+    )
+    .limit(1);
+  return row?.workout ?? null;
+}
