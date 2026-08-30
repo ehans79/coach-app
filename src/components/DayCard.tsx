@@ -1,4 +1,5 @@
 import { Badge, flagToBadge } from "@/components/Badge";
+import { StrengthSessionDetail } from "@/components/StrengthSessionDetail";
 import { formatKm, formatDuration } from "@/lib/format";
 import type { ThisWeekWorkout } from "@/lib/dashboard/queries";
 
@@ -78,7 +79,13 @@ export function DayCard({ workout, isToday }: { workout: ThisWeekWorkout; isToda
             <span className="group-open:hidden">Full session</span>
             <span className="hidden group-open:inline">Hide</span>
           </summary>
-          <p className="mt-2 text-xs leading-relaxed whitespace-pre-line text-ink-secondary">{w.humanReadable}</p>
+          <div className="mt-2">
+            {w.sport === "strength" ? (
+              <StrengthSessionDetail text={w.humanReadable} />
+            ) : (
+              <p className="text-xs leading-relaxed whitespace-pre-line text-ink-secondary">{w.humanReadable}</p>
+            )}
+          </div>
         </details>
       )}
 
