@@ -25,6 +25,7 @@ export interface ThisWeekWorkout {
   humanReadable: string | null;
   distanceMeters: number | null;
   durationMinutes: number | null;
+  primaryZone: string | null;
   completed: boolean;
   comment: {
     commentText: string;
@@ -43,6 +44,9 @@ export interface ThisWeekView {
   sessionsPlanned: number;
   sessionsCompleted: number;
   planRationale: string | null;
+  /** Only set when this plan version's own target week is the one being shown — a
+   * verdict generated for a different week would be describing the wrong thing. */
+  weekVerdict: string | null;
 }
 
 function findCurrentOrNextWeek(weeks: PlanWeekJson[], todayStr: string): PlanWeekJson | undefined {
@@ -110,6 +114,7 @@ export async function getThisWeekView(): Promise<ThisWeekView | null> {
         humanReadable: w.humanReadable,
         distanceMeters: w.distanceMeters,
         durationMinutes: w.durationMinutes,
+        primaryZone: w.primaryZone,
         completed: w.completed,
         comment: comment
           ? { commentText: comment.commentText, flag: comment.flag, zoneAdherence: comment.zoneAdherence }
@@ -118,6 +123,11 @@ export async function getThisWeekView(): Promise<ThisWeekView | null> {
     });
 
   const sessionWorkouts = workouts.filter((w) => w.sport !== "rest");
+
+  const isDisplayingThisVersionsTargetWeek = activePlan.weekStartDate === week.startDate;
+  const weekVerdict = isDisplayingThisVersionsTargetWeek
+    ? ((activePlan.guardrailsApplied as { weekVerdict?: string } | null)?.weekVerdict ?? null)
+    : null;
 
   return {
     weekNumber: week.weekNumber,
@@ -129,6 +139,7 @@ export async function getThisWeekView(): Promise<ThisWeekView | null> {
     sessionsPlanned: sessionWorkouts.length,
     sessionsCompleted: sessionWorkouts.filter((w) => w.completed).length,
     planRationale: activePlan.rationale,
+    weekVerdict,
   };
 }
 
