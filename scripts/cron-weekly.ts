@@ -4,7 +4,7 @@ config({ quiet: true }); // fall back to .env for anything not in .env.local
 import { syncRecentActivities } from "../src/lib/sync/activities";
 import { findUncommentedRunActivityIds, generateCommentaryForActivity } from "../src/lib/coaching/commentary";
 import { findUnmatchedActivityIds, matchAndMarkCompletion } from "../src/lib/coaching/matching";
-import { regeneratePlanForNextWeek } from "../src/lib/coaching/regeneration";
+import { regeneratePlanForNextWeek, PlanNotStartedYetError } from "../src/lib/coaching/regeneration";
 import { sendWeeklyDebrief } from "../src/lib/email/sendWeeklyDebrief";
 
 /**
@@ -39,14 +39,22 @@ async function main() {
 
   const today = new Date().toISOString().slice(0, 10);
   console.log(`Regenerating plan for the week following ${today}...`);
-  const result = await regeneratePlanForNextWeek(today);
-  console.log(`Created plan version ${result.version} (${result.planId})`);
-  console.log("Rationale:", result.rationale);
-  if (result.warnings.length > 0) console.log("Warnings:", result.warnings);
+  try {
+    const result = await regeneratePlanForNextWeek(today);
+    console.log(`Created plan version ${result.version} (${result.planId})`);
+    console.log("Rationale:", result.rationale);
+    if (result.warnings.length > 0) console.log("Warnings:", result.warnings);
 
-  console.log("Sending weekly debrief email...");
-  await sendWeeklyDebrief(result);
-  console.log("Sent.");
+    console.log("Sending weekly debrief email...");
+    await sendWeeklyDebrief(result);
+    console.log("Sent.");
+  } catch (err) {
+    if (err instanceof PlanNotStartedYetError) {
+      console.log(err.message, "Skipping regeneration and email this cycle.");
+    } else {
+      throw err;
+    }
+  }
 
   process.exit(0);
 }

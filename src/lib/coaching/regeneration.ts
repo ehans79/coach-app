@@ -189,6 +189,20 @@ export interface RegenerationResult {
 }
 
 /**
+ * Thrown when `todayStr` falls before the active plan's first week even
+ * starts — e.g. the Sunday-evening cron firing once before a plan's Monday
+ * start date. Expected and self-resolving (the very next cron run will find
+ * a matching week), unlike a genuine mid-plan gap — callers should treat it
+ * as a no-op skip, not a failure.
+ */
+export class PlanNotStartedYetError extends Error {
+  constructor(dateStr: string, planStartDate: string) {
+    super(`Active plan doesn't start until ${planStartDate} — nothing to regenerate yet for ${dateStr}.`);
+    this.name = "PlanNotStartedYetError";
+  }
+}
+
+/**
  * Regenerates the plan for the week following the one that just ended.
  * `todayStr` should be the date the job runs on (a Sunday) — the "just
  * ended" week is the one containing that date.
@@ -200,6 +214,10 @@ export async function regeneratePlanForNextWeek(todayStr: string): Promise<Regen
   const planJson = activePlan.planJson as PlanDocument;
   const justEndedWeek = findWeekContainingDate(planJson.weeks, todayStr);
   if (!justEndedWeek) {
+    const firstWeek = planJson.weeks[0];
+    if (firstWeek && todayStr < firstWeek.startDate) {
+      throw new PlanNotStartedYetError(todayStr, firstWeek.startDate);
+    }
     throw new Error(`No week in the active plan covers ${todayStr} — plan may need manual attention`);
   }
 
