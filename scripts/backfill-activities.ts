@@ -1,4 +1,6 @@
-import "dotenv/config";
+import { config } from "dotenv";
+config({ path: ".env.local", quiet: true });
+config({ quiet: true }); // fall back to .env for anything not in .env.local
 import { upsertActivitiesSince } from "../src/lib/sync/activities";
 
 /**
