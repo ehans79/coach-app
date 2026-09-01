@@ -4,6 +4,32 @@
 // produces new versions in this same shape so existing tooling stays
 // compatible.
 
+// One exercise within a strength session. `exerciseName` is the exact
+// display string as it appears in Garmin Connect's manual strength-workout
+// exercise picker (see src/lib/db/schema.ts's garmin_exercises table) —
+// every value the plan generator can produce here is constrained at
+// generation time to that table (src/lib/coaching/exerciseCatalog.ts), not
+// free text, so what it suggests is guaranteed typeable verbatim into the
+// picker (Edu hand-enters each session into Garmin Connect himself — this
+// is purely a naming-match aid, not an API push).
+export interface StrengthExerciseJson {
+  exerciseName: string;
+  sets?: number;
+  reps: string; // "12-15" | "8 each side" | "45-60s" — count- or time-based
+  restBetweenSetsSeconds?: number;
+}
+
+export interface StrengthSectionJson {
+  label: "Warm-up" | "Circuit" | "Core finisher" | "Cool-down";
+  rounds?: string; // e.g. "2-3" — only meaningful for a multi-round section like Circuit
+  restBetweenRoundsSeconds?: number;
+  exercises: StrengthExerciseJson[];
+}
+
+export interface StrengthWorkoutJson {
+  sections: StrengthSectionJson[];
+}
+
 export interface PlanWorkoutJson {
   id: string;
   sport: string; // run | strength | rest | bike | ...
@@ -14,6 +40,13 @@ export interface PlanWorkoutJson {
   distanceMeters?: number;
   primaryZone?: string;
   humanReadable?: string;
+  /** Structured, catalog-backed exercise breakdown — set for sport
+   * "strength" workouts produced by the regeneration engine. `description`/
+   * `humanReadable` are still populated (formatted from this data) so
+   * existing rendering keeps working; this is the source of truth for the
+   * exact Garmin Connect exercise names, for hand-entering the session.
+   * Absent on older/seeded plan rows that predate it. */
+  strength?: StrengthWorkoutJson;
   completed?: boolean;
 }
 
@@ -96,6 +129,10 @@ export interface FlattenedPlanWorkout {
   primaryZone: string | null;
   humanReadable: string | null;
   completed: boolean;
+  /** Carried through so callers (regeneration.ts) can insert the
+   * corresponding plan_workout_exercises rows once they have the inserted
+   * plan_workouts id — not itself a plan_workouts column. */
+  strength: StrengthWorkoutJson | null;
 }
 
 /** Walks weeks[].days[].workouts[] into flat rows for the plan_workouts table. */
@@ -117,6 +154,7 @@ export function flattenPlanWorkouts(plan: PlanDocument): FlattenedPlanWorkout[] 
           primaryZone: workout.primaryZone ?? null,
           humanReadable: workout.humanReadable ?? null,
           completed: workout.completed ?? false,
+          strength: workout.strength ?? null,
         });
       }
     }

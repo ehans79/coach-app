@@ -70,7 +70,7 @@ export function DayCard({ workout, isToday }: { workout: ThisWeekWorkout; isToda
           </summary>
           <div className="mt-2">
             {w.sport === "strength" ? (
-              <StrengthSessionDetail text={w.humanReadable} />
+              <StrengthSessionDetail text={w.humanReadable} exercises={w.exercises} />
             ) : (
               <p className="text-xs leading-relaxed whitespace-pre-line text-ink-secondary">{w.humanReadable}</p>
             )}
