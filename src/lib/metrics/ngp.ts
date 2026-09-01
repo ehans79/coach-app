@@ -12,6 +12,27 @@ const ROLL_WINDOW_SECONDS = 30;
 const MIN_MOVING_SPEED_MPS = 0.5; // excludes stopped/traffic-light points
 
 /**
+ * Strava's `time` stream counts ELAPSED seconds, so an auto-paused run leaves gaps in
+ * it — one observed activity here has 1773 samples spanning 3061s with a single 182s
+ * jump. Integrating `speed x dt` straight across such a gap invents ~1000m of running
+ * that never happened, which inflates NGP, the moving duration rTSS divides by, and the
+ * mean-maximal curve alike.
+ *
+ * Any step longer than this is therefore treated as a recording gap rather than a real
+ * sample interval: it contributes neither time nor distance, so the samples either side
+ * are simply not adjacent in running time. 10s clears Strava's "smart recording"
+ * variable sampling (a few seconds at most while moving) by a comfortable margin while
+ * still catching every genuine pause.
+ */
+export const MAX_SAMPLE_GAP_SECONDS = 10;
+
+/** dt between samples i and i+1, or 0 if that step is a recording gap. */
+export function sampleDeltaSeconds(time: number[], i: number): number {
+  const dt = time[i + 1] - time[i];
+  return dt > 0 && dt <= MAX_SAMPLE_GAP_SECONDS ? dt : 0;
+}
+
+/**
  * Per-point graded speed = velocity_smooth × Minetti GAP multiplier(grade_smooth).
  * Flat-grade fallback (multiplier=1 everywhere) when grade_smooth is missing —
  * degrades to unadjusted pace rather than failing outright.
@@ -80,7 +101,7 @@ export function computeNGPRange(
   let sumDt = 0;
   for (let i = 0; i < n - 1; i++) {
     if ((velocitySmooth?.[startIdx + i] ?? 0) < MIN_MOVING_SPEED_MPS) continue;
-    const dt = Math.max(0, rangeTime[i + 1] - rangeTime[i]);
+    const dt = sampleDeltaSeconds(rangeTime, i);
     sum4 += Math.pow(rolled[i], 4) * dt;
     sumDt += dt;
   }
@@ -115,7 +136,7 @@ export function computeAverageGapPace(stream: StreamData, startIdx: number, endI
   let sumDt = 0;
   for (let i = 0; i < n - 1; i++) {
     if ((velocitySmooth?.[startIdx + i] ?? 0) < MIN_MOVING_SPEED_MPS) continue;
-    const dt = Math.max(0, time[startIdx + i + 1] - time[startIdx + i]);
+    const dt = sampleDeltaSeconds(time, startIdx + i);
     distanceWeightedSpeed += gradedSpeed[startIdx + i] * dt;
     sumDt += dt;
   }
@@ -132,7 +153,7 @@ export function computeAvgGradePercent(stream: StreamData): number | null {
   let sum = 0;
   let sumDt = 0;
   for (let i = 0; i < n - 1; i++) {
-    const dt = Math.max(0, time[i + 1] - time[i]);
+    const dt = sampleDeltaSeconds(time, i);
     sum += gradeSmoothPercent[i] * dt;
     sumDt += dt;
   }

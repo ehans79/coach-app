@@ -1,5 +1,5 @@
 import type { StreamData } from "@/lib/coaching/streams";
-import { computeNGPRange } from "./ngp";
+import { computeNGPRange, sampleDeltaSeconds } from "./ngp";
 
 const BIN_SECONDS = 60;
 // Calibrated against this athlete's actual backfilled history, not generic
@@ -33,7 +33,7 @@ export function computeSteadiness(stream: StreamData): SteadinessResult {
     let sumDt = 0;
     let i = binStart;
     while (i < n - 1 && time[i] < binEndTime) {
-      const dt = Math.max(0, time[i + 1] - time[i]);
+      const dt = sampleDeltaSeconds(time, i);
       sum += velocitySmooth[i] * dt;
       sumDt += dt;
       i++;
@@ -71,7 +71,7 @@ function timeWeightedAvg(values: number[], time: number[], startIdx: number, end
   let sum = 0;
   let sumDt = 0;
   for (let i = startIdx; i < endIdx - 1; i++) {
-    const dt = Math.max(0, time[i + 1] - time[i]);
+    const dt = sampleDeltaSeconds(time, i);
     sum += values[i] * dt;
     sumDt += dt;
   }

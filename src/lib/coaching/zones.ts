@@ -1,6 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { zoneVersions } from "@/lib/db/schema";
+import { sampleDeltaSeconds } from "@/lib/metrics/ngp";
 
 export interface HrZoneDef {
   zone: number;
@@ -47,7 +48,7 @@ export function computeZoneTimeDistribution(
   let totalSeconds = 0;
   const n = Math.min(heartRate.length, time.length);
   for (let i = 0; i < n - 1; i++) {
-    const dt = Math.max(0, time[i + 1] - time[i]);
+    const dt = sampleDeltaSeconds(time, i);
     const zone = bucketizeHrZone(heartRate[i], zones);
     totals.set(zone, (totals.get(zone) ?? 0) + dt);
     totalSeconds += dt;
