@@ -8,7 +8,7 @@ export interface NgpResult {
   movingDurationSeconds: number;
 }
 
-const ROLL_WINDOW_SECONDS = 30;
+export const ROLL_WINDOW_SECONDS = 30;
 const MIN_MOVING_SPEED_MPS = 0.5; // excludes stopped/traffic-light points
 
 /**
@@ -50,7 +50,7 @@ export function computeGradedSpeedSeries(stream: StreamData, warnings?: string[]
 }
 
 /** 30s time-windowed rolling average via a two-pointer sliding window — robust to irregular sampling. */
-function rollingAverage(values: number[], time: number[], windowSeconds: number): number[] {
+export function rollingAverage(values: number[], time: number[], windowSeconds: number): number[] {
   const n = values.length;
   const rolled = new Array(n);
   let lo = 0;

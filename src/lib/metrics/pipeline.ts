@@ -1,6 +1,6 @@
 import { and, eq, gte, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { activities, activityMetrics, activityMetricReps } from "@/lib/db/schema";
+import { activities, activityMetrics, activityMetricReps, activityStreams } from "@/lib/db/schema";
 import { getOrFetchStreams } from "@/lib/sync/activities";
 import { getActivityLaps } from "@/lib/strava/client";
 import type { StravaStreamSet, StravaLap } from "@/lib/strava/types";
@@ -9,6 +9,8 @@ import { getCurrentHrZones, computeZoneTimeDistribution } from "@/lib/coaching/z
 import { localDateOf } from "@/lib/coaching/matching";
 import { getCurrentAthleteConstants } from "./constants";
 import { updateBestEffortsForActivity } from "./bestEfforts";
+import { updateBestPowerEffortsForActivity } from "./bestPowerEfforts";
+import { computePowerSummary } from "./power";
 import { recordQualifyingEffort } from "./qualifyingEfforts";
 import { computeNGP, computeAverageGapPace, computeAvgGradePercent } from "./ngp";
 import { computeTrimp } from "./trimp";
@@ -68,6 +70,7 @@ export async function computeMetricsForActivity(activityId: number): Promise<voi
   const { structure: lapStructure, realLaps } = detectLapStructure(laps);
   const repRows = lapStructure === "interval_reps" ? buildRepRows(realLaps, stream) : [];
 
+  const power = computePowerSummary(stream);
   const gapAvgPaceSecPerKm = computeAverageGapPace(stream, 0, stream.time.length);
   const avgGradePercent = computeAvgGradePercent(stream);
 
@@ -110,6 +113,9 @@ export async function computeMetricsForActivity(activityId: number): Promise<voi
     zoneSecondsLow: hasHrZoneData ? low : null,
     zoneSecondsModerate: hasHrZoneData ? moderate : null,
     zoneSecondsHigh: hasHrZoneData ? high : null,
+    avgPowerWatts: power?.avgWatts ?? null,
+    normalizedPowerWatts: power?.normalizedWatts ?? null,
+    powerArtifactSamples: power?.artifactSamples ?? null,
     constantsId: constants.id,
     warnings,
     computedAt: new Date(),
@@ -140,6 +146,11 @@ export async function computeMetricsForActivity(activityId: number): Promise<voi
     await updateBestEffortsForActivity(activityId, localDateOf(activity.startDateLocal), stream);
   } catch (err) {
     console.error(`Failed to update best efforts for activity ${activityId}`, err);
+  }
+  try {
+    await updateBestPowerEffortsForActivity(activityId, localDateOf(activity.startDateLocal), stream);
+  } catch (err) {
+    console.error(`Failed to update best power efforts for activity ${activityId}`, err);
   }
   try {
     await recordQualifyingEffort({
@@ -175,4 +186,39 @@ export async function findUnmetricatedRunActivityIds(): Promise<number[]> {
       and(eq(activities.sportType, "Run"), isNull(activityMetrics.activityId), gte(activities.startDate, since))
     );
   return rows.map((r) => r.id);
+}
+
+/**
+ * Fills in the power columns on already-computed activity_metrics rows from cached
+ * streams — no Strava calls at all.
+ *
+ * Exists because power arrived after those rows were written, and the alternative
+ * (computeMetricsForActivity over the whole history) re-fetches laps for every activity,
+ * which is a second full pass over the Strava quota to recompute values that haven't
+ * changed. This touches only the three power columns and leaves every other metric,
+ * including the constants_id each row was computed under, exactly as it was.
+ */
+export async function backfillPowerScalarsFromCache(): Promise<{ updated: number; scanned: number }> {
+  const rows = await db
+    .select({ activityId: activityMetrics.activityId, streams: activityStreams.streams })
+    .from(activityMetrics)
+    .innerJoin(activityStreams, eq(activityStreams.activityId, activityMetrics.activityId));
+
+  let updated = 0;
+  for (const row of rows) {
+    const stream = extractStreamArrays(row.streams as StravaStreamSet);
+    if (!stream.watts) continue;
+    const power = computePowerSummary(stream);
+    if (!power) continue;
+    await db
+      .update(activityMetrics)
+      .set({
+        avgPowerWatts: power.avgWatts,
+        normalizedPowerWatts: power.normalizedWatts,
+        powerArtifactSamples: power.artifactSamples,
+      })
+      .where(eq(activityMetrics.activityId, row.activityId));
+    updated += 1;
+  }
+  return { updated, scanned: rows.length };
 }

@@ -27,6 +27,18 @@ import {
   type VdotHistoryPoint,
 } from "@/lib/metrics/qualifyingEfforts";
 import { getBestEfforts, type BestEffortPoint } from "@/lib/metrics/bestEfforts";
+import { getBestPowerEfforts, type BestPowerPoint } from "@/lib/metrics/bestPowerEfforts";
+import {
+  getCurrentCriticalPower,
+  predictedPowerAt,
+  resolvePowerZones,
+  computePowerZoneDistribution,
+  type CurrentCriticalPower,
+  type PowerZoneBucket,
+  type ResolvedPowerZone,
+} from "@/lib/metrics/criticalPower";
+import { cleanPowerSeries, MAX_PLAUSIBLE_INSTANT_WATTS } from "@/lib/metrics/power";
+import { sampleDeltaSeconds } from "@/lib/metrics/ngp";
 import {
   computePercentOfCriticalSpeed,
   getCurrentCriticalSpeed,
@@ -717,6 +729,104 @@ export async function getCriticalSpeedView(): Promise<CriticalSpeedView> {
     csPaceSecPerKm: fit ? fit.criticalSpeedPaceSecPerKm : null,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Running power — the power-duration curve, the CP fit, and per-run power detail
+// ---------------------------------------------------------------------------
+
+/** Shown wherever a wattage appears, so the number is never read as more precise than it is. */
+export const WRIST_POWER_CAVEAT =
+  "Wrist-based estimate from the watch, not a foot pod. Garmin's algorithm is proprietary and unvalidated in public literature, so treat these as a self-consistent internal reference — good for tracking your own trend, not comparable to another runner's or a Stryd's.";
+
+export interface PowerDurationPoint {
+  durationSeconds: number;
+  watts: number;
+  fittedWatts: number | null;
+  activityId: number;
+  activityName: string;
+  achievedOn: string;
+  usedInFit: boolean;
+}
+
+export interface PowerDurationView {
+  points: PowerDurationPoint[];
+  fit: CurrentCriticalPower | null;
+  zones: ResolvedPowerZone[];
+}
+
+export async function getPowerDurationView(): Promise<PowerDurationView> {
+  const [efforts, fit] = await Promise.all([getBestPowerEfforts(), getCurrentCriticalPower()]);
+  const fitDurations = new Set((fit?.points ?? []).map((p) => p.durationSeconds));
+  return {
+    points: efforts.map((e: BestPowerPoint) => ({
+      durationSeconds: e.durationSeconds,
+      watts: e.watts,
+      fittedWatts: fit ? predictedPowerAt(fit, e.durationSeconds) : null,
+      activityId: e.activityId,
+      activityName: e.activityName,
+      achievedOn: e.achievedOn,
+      usedInFit: fitDurations.has(e.durationSeconds),
+    })),
+    fit,
+    zones: fit ? resolvePowerZones(fit.criticalPowerWatts) : [],
+  };
+}
+
+export interface ActivityPowerView {
+  avgWatts: number;
+  normalizedWatts: number;
+  artifactSamples: number;
+  /** Null until a CP fit exists — the zone split is meaningless without one. */
+  percentOfCp: number | null;
+  criticalPowerWatts: number | null;
+  zones: PowerZoneBucket[];
+}
+
+/**
+ * Per-run power detail. The zone split is recomputed from the cached stream rather than
+ * stored, so it always reflects the CP fit currently on display (see
+ * computePowerZoneDistribution).
+ */
+export async function getActivityPowerView(activityId: number): Promise<ActivityPowerView | null> {
+  const [metrics] = await db
+    .select({
+      avgPowerWatts: activityMetrics.avgPowerWatts,
+      normalizedPowerWatts: activityMetrics.normalizedPowerWatts,
+      powerArtifactSamples: activityMetrics.powerArtifactSamples,
+    })
+    .from(activityMetrics)
+    .where(eq(activityMetrics.activityId, activityId))
+    .limit(1);
+  if (!metrics?.avgPowerWatts || !metrics.normalizedPowerWatts) return null;
+
+  const cp = await getCurrentCriticalPower();
+  let zones: PowerZoneBucket[] = [];
+  if (cp) {
+    const [streamRow] = await db
+      .select()
+      .from(activityStreams)
+      .where(eq(activityStreams.activityId, activityId))
+      .limit(1);
+    if (streamRow) {
+      const stream = extractStreamArrays(streamRow.streams as StravaStreamSet);
+      if (stream.watts) {
+        const { watts } = cleanPowerSeries(stream.watts);
+        zones = computePowerZoneDistribution(watts, stream.time, cp.criticalPowerWatts, sampleDeltaSeconds);
+      }
+    }
+  }
+
+  return {
+    avgWatts: metrics.avgPowerWatts,
+    normalizedWatts: metrics.normalizedPowerWatts,
+    artifactSamples: metrics.powerArtifactSamples ?? 0,
+    percentOfCp: cp ? (metrics.normalizedPowerWatts / cp.criticalPowerWatts) * 100 : null,
+    criticalPowerWatts: cp?.criticalPowerWatts ?? null,
+    zones,
+  };
+}
+
+export const POWER_ARTIFACT_CEILING_WATTS = MAX_PLAUSIBLE_INSTANT_WATTS;
 
 export async function getAthleteRunCountBySport(): Promise<{ sportType: string; count: number }[]> {
   const rows = await db

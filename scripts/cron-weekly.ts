@@ -8,6 +8,7 @@ import { computeMetricsForActivity, findUnmetricatedRunActivityIds } from "../sr
 import { computeDailyRollup } from "../src/lib/metrics/rollup";
 import { reconcileVdotIntoZones } from "../src/lib/metrics/qualifyingEfforts";
 import { refitCriticalSpeed } from "../src/lib/metrics/criticalSpeed";
+import { refitCriticalPower } from "../src/lib/metrics/criticalPower";
 import { regeneratePlanForNextWeek, PlanNotStartedYetError } from "../src/lib/coaching/regeneration";
 import { sendWeeklyDebrief } from "../src/lib/email/sendWeeklyDebrief";
 
@@ -58,6 +59,13 @@ async function main() {
     csFit.fit
       ? `Critical Speed refit: ${csFit.fit.criticalSpeedMps.toFixed(3)} m/s, D' ${csFit.fit.dPrimeMeters.toFixed(0)}m, r²=${csFit.fit.rSquared.toFixed(3)} over ${csFit.fit.points.length} points.`
       : `Critical Speed not refit: ${csFit.reason}`
+  );
+
+  const cpFit = await refitCriticalPower();
+  console.log(
+    cpFit.fit
+      ? `Critical Power refit: ${cpFit.fit.criticalPowerWatts.toFixed(1)}W, W' ${(cpFit.fit.wPrimeJoules / 1000).toFixed(1)}kJ, r²=${cpFit.fit.rSquared.toFixed(3)} over ${cpFit.fit.points.length} points.`
+      : `Critical Power not refit: ${cpFit.reason}`
   );
 
   const uncommented = await findUncommentedRunActivityIds();

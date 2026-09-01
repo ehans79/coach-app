@@ -98,7 +98,15 @@ export const activityStreams = pgTable("activity_streams", {
   activityId: bigint("activity_id", { mode: "number" })
     .primaryKey()
     .references(() => activities.id, { onDelete: "cascade" }),
-  streams: jsonb("streams").notNull(), // raw { heartrate, time, distance, velocity_smooth, cadence, latlng, temp }
+  streams: jsonb("streams").notNull(), // raw { heartrate, time, distance, velocity_smooth, cadence, latlng, temp, watts }
+  // The key set REQUESTED when this payload was cached — not the keys it came back
+  // with. Strava omits any stream an activity has no data for (no temperature sensor,
+  // no GPS on a treadmill run), so a freshness check based on which keys are PRESENT
+  // treats those payloads as permanently incomplete and re-fetches them on every read.
+  // Comparing against what was asked for instead makes the cache actually cache.
+  // Null on rows written before this column existed — treated as stale, so each is
+  // re-fetched once and then settles.
+  fetchedKeys: jsonb("fetched_keys"), // string[]
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -398,6 +406,16 @@ export const activityMetrics = pgTable("activity_metrics", {
   zoneSecondsLow: integer("zone_seconds_low"),
   zoneSecondsModerate: integer("zone_seconds_moderate"),
   zoneSecondsHigh: integer("zone_seconds_high"),
+  // Running power, from the watch's own wrist-based estimate carried through Strava's
+  // `watts` stream (Forerunner 265). An estimate, not a foot-pod measurement — every
+  // surface that shows these says so. Per-point time-in-power-zone is deliberately NOT
+  // stored, matching the zone/GAP precedent above: charts recompute it on read from the
+  // cached stream, so it follows the current CP fit rather than freezing an old one.
+  avgPowerWatts: real("avg_power_watts"),
+  normalizedPowerWatts: real("normalized_power_watts"), // NP: 30s rolling, 4th-power mean
+  // How many raw samples were clamped as artifacts (see metrics/power.ts). Kept visible
+  // rather than silently dropped — one run in this history reports a 2017W spike.
+  powerArtifactSamples: integer("power_artifact_samples"),
   constantsId: uuid("constants_id").references(() => athleteConstants.id, { onDelete: "set null" }),
   metricsVersion: integer("metrics_version").notNull().default(1),
   warnings: jsonb("warnings"), // string[] — e.g. "grade_smooth missing, GAP/NGP unadjusted"
@@ -450,4 +468,40 @@ export const dailyLoad = pgTable("daily_load", {
   zoneSecondsModerate: integer("zone_seconds_moderate").notNull().default(0),
   zoneSecondsHigh: integer("zone_seconds_high").notNull().default(0),
   computedAt: timestamp("computed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
+// Best power efforts — the mean-maximal POWER curve, the direct analogue of
+// best_efforts (which holds the same curve for grade-adjusted speed). Same standard
+// durations, same incremental-update-then-weekly-fit rhythm, so the two curves stay
+// comparable. Split into its own table rather than adding columns to best_efforts
+// because the best 5-minute power and the best 5-minute pace routinely come from
+// different activities.
+// ---------------------------------------------------------------------------
+export const bestPowerEfforts = pgTable("best_power_efforts", {
+  durationSeconds: integer("duration_seconds").primaryKey(),
+  watts: real("watts").notNull(),
+  activityId: bigint("activity_id", { mode: "number" })
+    .notNull()
+    .references(() => activities.id, { onDelete: "cascade" }),
+  achievedOn: date("achieved_on").notNull(),
+  computedAt: timestamp("computed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
+// Critical Power fits — the two-parameter model in its work form, W = CP·t + W′
+// (Monod & Scherrer 1965; the power analogue of critical_speed_fits' distance form).
+// CP is the slope in watts, W′ the intercept in joules — the finite work available
+// above CP. Versioned and refit weekly, exactly like the Critical Speed fit.
+// ---------------------------------------------------------------------------
+export const criticalPowerFits = pgTable("critical_power_fits", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  asOfDate: date("as_of_date").notNull(),
+  criticalPowerWatts: real("critical_power_watts").notNull(),
+  wPrimeJoules: real("w_prime_joules").notNull(),
+  rSquared: real("r_squared"),
+  pointCount: integer("point_count").notNull(),
+  pointsUsed: jsonb("points_used"), // [{ durationSeconds, watts, activityId, achievedOn }]
+  isCurrent: boolean("is_current").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -65,12 +65,20 @@ export async function syncSingleActivityDetail(
 }
 
 /**
- * Returns cached streams for an activity, fetching + caching them from Strava if
- * absent OR if the cached payload is missing any of the requested keys (e.g. an
- * activity synced before grade_smooth/altitude/moving were added to the default
- * key set) — without this check, older cached rows would silently stay missing
- * those keys forever, and metrics reading them would incorrectly conclude the
- * stream was never available for that activity rather than just never fetched.
+ * Returns cached streams for an activity, re-fetching from Strava only when the cache
+ * is absent or was populated without one of the keys now being asked for (e.g. an
+ * activity cached before grade_smooth/altitude/moving — or watts — joined the default
+ * key set). Without that second condition older rows would stay permanently missing
+ * those keys, and metrics reading them would wrongly conclude the stream was never
+ * available rather than merely never requested.
+ *
+ * Freshness is judged against the key set that was REQUESTED, recorded in fetched_keys,
+ * not against which keys came back. Strava omits any stream the activity has no data
+ * for — no temperature sensor, no GPS on a treadmill, no power meter — so a
+ * presence-based check marks those payloads incomplete forever and re-fetches on every
+ * single read. That is not hypothetical: none of the 95 cached runs here carried `temp`,
+ * so before this change the cache never once produced a hit and every metrics run,
+ * commentary generation and backfill paid a full Strava round trip.
  */
 export async function getOrFetchStreams(activityId: number, keys: StravaStreamType[] = DEFAULT_STREAM_KEYS) {
   const [existing] = await db
@@ -79,13 +87,17 @@ export async function getOrFetchStreams(activityId: number, keys: StravaStreamTy
     .where(eq(activityStreams.activityId, activityId))
     .limit(1);
   const cached = existing?.streams as StravaStreamSet | undefined;
-  if (cached && keys.every((k) => k in cached)) return cached;
+  const fetchedKeys = existing?.fetchedKeys as StravaStreamType[] | null | undefined;
+  // Rows written before fetched_keys existed have no record of what was asked for, so
+  // they're treated as stale — one re-fetch each, then they settle.
+  if (cached && fetchedKeys && keys.every((k) => fetchedKeys.includes(k))) return cached;
 
   const streams = await getActivityStreams(activityId, keys);
+  const row = { activityId, streams, fetchedKeys: keys, fetchedAt: new Date() };
   await db
     .insert(activityStreams)
-    .values({ activityId, streams })
-    .onConflictDoUpdate({ target: activityStreams.activityId, set: { streams, fetchedAt: new Date() } });
+    .values(row)
+    .onConflictDoUpdate({ target: activityStreams.activityId, set: row });
   await db.update(activities).set({ hasStreams: true }).where(eq(activities.id, activityId));
   return streams;
 }

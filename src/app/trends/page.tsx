@@ -5,6 +5,8 @@ import {
   getWeeklyIntensityDistribution,
   getVdotView,
   getCriticalSpeedView,
+  getPowerDurationView,
+  WRIST_POWER_CAVEAT,
 } from "@/lib/dashboard/queries";
 import { assessTrainingStrain } from "@/lib/metrics/strain";
 import { formatPace } from "@/lib/format";
@@ -21,10 +23,11 @@ import { AcwrTrendChart } from "@/components/charts/AcwrTrendChart";
 import { IntensityDistributionChart } from "@/components/charts/IntensityDistributionChart";
 import { VdotTrendChart } from "@/components/charts/VdotTrendChart";
 import { MeanMaxPaceChart } from "@/components/charts/MeanMaxPaceChart";
+import { PowerDurationChart } from "@/components/charts/PowerDurationChart";
 import { VdotPanel } from "@/components/VdotPanel";
 
 export default async function TrendsPage() {
-  const [volumeTrend, zoneTrend, dailyLoadTrend, intensityDistribution, vdot, criticalSpeed, strain] =
+  const [volumeTrend, zoneTrend, dailyLoadTrend, intensityDistribution, vdot, criticalSpeed, strain, power] =
     await Promise.all([
       getWeeklyVolumeTrend(),
       getZoneAdherenceTrend(),
@@ -33,6 +36,7 @@ export default async function TrendsPage() {
       getVdotView(),
       getCriticalSpeedView(),
       assessTrainingStrain(),
+      getPowerDurationView(),
     ]);
 
   return (
@@ -107,6 +111,92 @@ export default async function TrendsPage() {
               rather than all-out tests, so the fit is only as honest as the efforts behind it: wherever the model line
               sits above your actual best, no genuinely maximal effort of that length exists in the history yet. The two
               lines should converge as those accumulate.
+            </p>
+          </>
+        )}
+      </Card>
+
+      <Card
+        className="mt-4"
+        title="Running power &amp; Critical Power"
+        subtitle="Best sustained power at each duration, with the same two-parameter model fitted through it"
+      >
+        {power.points.length === 0 ? (
+          <EmptyState message="No power data yet — this fills in as runs with wrist power sync." />
+        ) : (
+          <>
+            <PowerDurationChart
+              points={power.points}
+              criticalPowerWatts={power.fit?.criticalPowerWatts ?? null}
+            />
+            {power.fit ? (
+              <>
+                <div className="mt-4 grid grid-cols-2 gap-4 border-t border-gridline pt-4 sm:grid-cols-4">
+                  <div>
+                    <div className="text-xs text-ink-muted">Critical Power</div>
+                    <div className="mt-0.5 font-mono text-lg font-bold text-ink-primary tabular-nums">
+                      {Math.round(power.fit.criticalPowerWatts)}W
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-ink-muted">W&prime;</div>
+                    <div className="mt-0.5 font-mono text-lg font-bold text-ink-primary tabular-nums">
+                      {(power.fit.wPrimeJoules / 1000).toFixed(1)}kJ
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-ink-muted">Fit quality</div>
+                    <div className="mt-0.5 font-mono text-lg font-bold text-ink-primary tabular-nums">
+                      r&sup2; {power.fit.rSquared.toFixed(3)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-ink-muted">Points used</div>
+                    <div className="mt-0.5 font-mono text-lg font-bold text-ink-primary tabular-nums">
+                      {power.fit.points.length}
+                    </div>
+                  </div>
+                </div>
+
+                {power.zones.length > 0 && (
+                  <div className="mt-4 border-t border-gridline pt-4">
+                    <div className="text-xs font-medium text-ink-muted">Power zones (% of CP)</div>
+                    <div className="mt-2 overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <tbody>
+                          {power.zones.map((z) => (
+                            <tr key={z.zone} className="border-t border-gridline first:border-t-0">
+                              <td className="w-full py-2 pr-3 whitespace-nowrap">
+                                <span className="font-medium text-ink-primary">
+                                  Zone {z.zone} — {z.name}
+                                </span>
+                                <span className="ml-1.5 text-ink-muted">
+                                  {z.lowPercentOfCp}
+                                  {z.highPercentOfCp != null ? `\u2013${z.highPercentOfCp}` : "+"}%
+                                </span>
+                              </td>
+                              <td className="py-2 text-right whitespace-nowrap text-ink-secondary tabular-nums">
+                                {z.lowWatts}
+                                {z.highWatts != null ? `\u2013${z.highWatts}` : "+"}W
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="mt-4 border-t border-gridline pt-4">
+                <EmptyState message="Not enough of the curve filled in to fit Critical Power yet." />
+              </div>
+            )}
+            <p className="mt-4 text-xs leading-relaxed text-ink-muted">
+              CP is the power asymptote separating the heavy and severe intensity domains; W&prime; is the finite work
+              available above it. Fitted over 2&ndash;30 minute efforts only, so wherever the model line sits above your
+              actual best &mdash; typically the 1-hour end &mdash; it means no genuinely maximal effort of that length
+              exists in the history yet, not that you underperformed. {WRIST_POWER_CAVEAT}
             </p>
           </>
         )}

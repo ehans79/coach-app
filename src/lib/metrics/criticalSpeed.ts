@@ -2,6 +2,12 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { criticalSpeedFits } from "@/lib/db/schema";
 import { getBestEfforts, type BestEffortPoint } from "./bestEfforts";
+import {
+  leastSquaresFit,
+  FIT_MIN_DURATION_SECONDS,
+  FIT_MAX_DURATION_SECONDS,
+  MIN_FIT_POINTS,
+} from "./twoParameterFit";
 
 /**
  * Critical Speed / D′ from the two-parameter hyperbolic model in its linear form,
@@ -9,17 +15,6 @@ import { getBestEfforts, type BestEffortPoint } from "./bestEfforts";
  * §2/§6). CS is the slope — the speed asymptote separating the heavy and severe
  * intensity domains — and D′ the intercept, the finite distance runnable above it.
  */
-
-// Fit window. The classic protocol uses maximal efforts of roughly 2-15 min, where the
-// hyperbola is well-conditioned: shorter efforts are dominated by D′ and longer ones by
-// substrate/thermoregulation rather than CS, both of which bend the line. 30 min is kept
-// as the upper bound because with this athlete's sparse history dropping to 20 would
-// often leave too few points to fit at all; 60 min is deliberately excluded.
-const FIT_MIN_DURATION_SECONDS = 120;
-const FIT_MAX_DURATION_SECONDS = 1800;
-// Two points define a line but say nothing about whether the model fits. Three is the
-// minimum at which r² carries any information.
-const MIN_FIT_POINTS = 3;
 
 // Plausibility rails. A fit outside these means the curve is being driven by something
 // other than sustainable speed (near-identical points, a GPS artefact, a curve built
@@ -55,22 +50,14 @@ export function fitCriticalSpeed(efforts: BestEffortPoint[]): CriticalSpeedFitRe
     };
   }
 
-  const times = points.map((p) => p.durationSeconds);
-  const distances = points.map((p) => p.gradedSpeedMps * p.durationSeconds);
-  const n = points.length;
-  const meanT = times.reduce((a, b) => a + b, 0) / n;
-  const meanD = distances.reduce((a, b) => a + b, 0) / n;
-
-  let covariance = 0;
-  let varianceT = 0;
-  for (let i = 0; i < n; i++) {
-    covariance += (times[i] - meanT) * (distances[i] - meanD);
-    varianceT += (times[i] - meanT) ** 2;
-  }
-  if (varianceT === 0) return { fit: null, reason: "Best efforts don't span enough different durations to fit." };
-
-  const criticalSpeedMps = covariance / varianceT;
-  const dPrimeMeters = meanD - criticalSpeedMps * meanT;
+  // distance = CS·t + D' — the speed-domain form of the shared two-parameter model.
+  const linear = leastSquaresFit(
+    points.map((p) => p.durationSeconds),
+    points.map((p) => p.gradedSpeedMps * p.durationSeconds)
+  );
+  if (!linear) return { fit: null, reason: "Best efforts don't span enough different durations to fit." };
+  const criticalSpeedMps = linear.slope;
+  const dPrimeMeters = linear.intercept;
 
   if (criticalSpeedMps < MIN_PLAUSIBLE_CS_MPS || criticalSpeedMps > MAX_PLAUSIBLE_CS_MPS) {
     return { fit: null, reason: "The fitted speed came out implausible — the curve needs harder, more varied efforts." };
@@ -85,14 +72,7 @@ export function fitCriticalSpeed(efforts: BestEffortPoint[]): CriticalSpeedFitRe
     };
   }
 
-  let residualSumSquares = 0;
-  let totalSumSquares = 0;
-  for (let i = 0; i < n; i++) {
-    const predicted = criticalSpeedMps * times[i] + dPrimeMeters;
-    residualSumSquares += (distances[i] - predicted) ** 2;
-    totalSumSquares += (distances[i] - meanD) ** 2;
-  }
-  const rSquared = totalSumSquares > 0 ? 1 - residualSumSquares / totalSumSquares : 1;
+  const rSquared = linear.rSquared;
 
   return {
     fit: {

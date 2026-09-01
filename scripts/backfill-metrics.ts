@@ -4,11 +4,13 @@ config({ quiet: true }); // fall back to .env for anything not in .env.local
 import { eq, sql } from "drizzle-orm";
 import { db } from "../src/lib/db/client";
 import { activities } from "../src/lib/db/schema";
-import { computeMetricsForActivity } from "../src/lib/metrics/pipeline";
+import { computeMetricsForActivity, backfillPowerScalarsFromCache } from "../src/lib/metrics/pipeline";
 import { computeDailyRollup } from "../src/lib/metrics/rollup";
 import { rebuildBestEfforts } from "../src/lib/metrics/bestEfforts";
+import { rebuildBestPowerEfforts } from "../src/lib/metrics/bestPowerEfforts";
 import { reconcileVdotIntoZones, redetectQualifyingEfforts } from "../src/lib/metrics/qualifyingEfforts";
 import { refitCriticalSpeed } from "../src/lib/metrics/criticalSpeed";
+import { refitCriticalPower } from "../src/lib/metrics/criticalPower";
 
 // Delay between Strava calls (each activity costs up to 2: a streams refetch if
 // the cache predates grade_smooth/altitude/moving, plus a laps fetch, which is
@@ -75,6 +77,16 @@ async function main() {
   const rebuilt = await rebuildBestEfforts();
   console.log(`Filled ${rebuilt.durationsFilled} durations from ${rebuilt.activitiesScanned} runs.`);
 
+  // Cheap safety net: fills power columns on any row whose metrics predate power
+  // support, straight from cached streams. Redundant right after the full recompute
+  // above, but makes this script correct even when that loop partly failed.
+  const powerScalars = await backfillPowerScalarsFromCache();
+  console.log(`Power scalars filled on ${powerScalars.updated}/${powerScalars.scanned} metric rows.`);
+
+  console.log("Rebuilding the mean-maximal power curve...");
+  const rebuiltPower = await rebuildBestPowerEfforts();
+  console.log(`Filled ${rebuiltPower.durationsFilled} durations from ${rebuiltPower.activitiesScanned} runs with power.`);
+
   // Re-runs the race/time-trial detector over the whole history from cached streams.
   // Redundant with the per-activity pass above on a full backfill, but it's the path
   // that re-applies tuned detection thresholds without touching Strava.
@@ -92,6 +104,13 @@ async function main() {
     csFit.fit
       ? `Critical Speed: ${csFit.fit.criticalSpeedMps.toFixed(3)} m/s (${Math.round(csFit.fit.criticalSpeedPaceSecPerKm)}s/km), D' ${csFit.fit.dPrimeMeters.toFixed(0)}m, r²=${csFit.fit.rSquared.toFixed(3)}.`
       : `Critical Speed not fit: ${csFit.reason}`
+  );
+
+  const cpFit = await refitCriticalPower();
+  console.log(
+    cpFit.fit
+      ? `Critical Power: ${cpFit.fit.criticalPowerWatts.toFixed(1)}W, W' ${(cpFit.fit.wPrimeJoules / 1000).toFixed(1)}kJ, r²=${cpFit.fit.rSquared.toFixed(3)}.`
+      : `Critical Power not fit: ${cpFit.reason}`
   );
 
   process.exit(0);

@@ -92,6 +92,11 @@ export const DEFAULT_STREAM_KEYS: StravaStreamType[] = [
   "grade_smooth",
   "altitude",
   "moving",
+  // Wrist-based running power from the watch, carried through by Strava with
+  // device_watts=true. Absent on activities recorded without a power-capable device —
+  // which is exactly why the cache freshness check keys off the REQUESTED key set
+  // rather than which keys came back (see getOrFetchStreams).
+  "watts",
 ];
 
 export async function getActivityStreams(

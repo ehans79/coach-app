@@ -8,6 +8,7 @@ export interface StreamData {
   // every use compares an activity to the athlete's own recent average, never an absolute target.
   velocitySmooth?: number[]; // m/s
   gradeSmoothPercent?: number[]; // Strava's own pre-smoothed grade, e.g. 5.2 = +5.2%
+  watts?: number[]; // wrist-based running power estimate — see metrics/power.ts
   altitude?: number[]; // meters — display/debugging only, GAP uses gradeSmoothPercent directly
   moving?: boolean[];
 }
@@ -20,6 +21,7 @@ export function extractStreamArrays(raw: StravaStreamSet): StreamData {
     cadence: raw.cadence?.data as number[] | undefined,
     velocitySmooth: raw.velocity_smooth?.data as number[] | undefined,
     gradeSmoothPercent: raw.grade_smooth?.data as number[] | undefined,
+    watts: raw.watts?.data as number[] | undefined,
     altitude: raw.altitude?.data as number[] | undefined,
     moving: raw.moving?.data as boolean[] | undefined,
   };

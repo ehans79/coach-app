@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getActivityDetail, getActivityHrGapSeries, getActivityReps } from "@/lib/dashboard/queries";
+import {
+  getActivityDetail,
+  getActivityHrGapSeries,
+  getActivityReps,
+  getActivityPowerView,
+  WRIST_POWER_CAVEAT,
+} from "@/lib/dashboard/queries";
 
 export const dynamic = "force-dynamic";
 import { Card } from "@/components/Card";
@@ -9,6 +15,7 @@ import { adherenceToBadge, flagToVerdict } from "@/components/Badge";
 import { HeroVerdict } from "@/components/HeroVerdict";
 import { HrGapDecouplingChart } from "@/components/charts/HrGapDecouplingChart";
 import { IntervalRepsChart } from "@/components/charts/IntervalRepsChart";
+import { ZoneDistributionPanel } from "@/components/ZoneDistributionPanel";
 import { formatKm, formatDuration, formatPace } from "@/lib/format";
 
 function formatDate(d: Date): string {
@@ -34,9 +41,10 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
       : null;
 
   const facts = activity.comment?.facts ?? null;
-  const [hrGapSeries, reps] = await Promise.all([
+  const [hrGapSeries, reps, power] = await Promise.all([
     getActivityHrGapSeries(activityId),
     activity.metrics?.runType === "interval" ? getActivityReps(activityId) : Promise.resolve([]),
+    getActivityPowerView(activityId),
   ]);
 
   return (
@@ -163,18 +171,26 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
         </Card>
       )}
 
-      {facts && Object.keys(facts.zoneAdherence.distributionPercent).length > 0 && (
-        <Card title="Zone time distribution" className="mb-6">
-          <div className="flex flex-col gap-1.5">
-            {Object.entries(facts.zoneAdherence.distributionPercent).map(([zone, pct]) => (
-              <div key={zone} className="flex items-center justify-between text-sm">
-                <span className="text-ink-secondary">{zone.replace(/_/g, " ")}</span>
-                <span className="font-medium text-ink-primary">{pct}%</span>
-              </div>
-            ))}
-          </div>
+      {(facts && Object.keys(facts.zoneAdherence.distributionPercent).length > 0) || power ? (
+        <Card
+          title="Time in zone"
+          subtitle={power ? "Switch between heart-rate and power zones" : undefined}
+          className="mb-6"
+        >
+          <ZoneDistributionPanel
+            hrZones={Object.entries(facts?.zoneAdherence.distributionPercent ?? {})
+              .map(([key, pct]) => ({
+                zone: Number(key.match(/^zone(\d)/)?.[1] ?? 0),
+                label: key.replace(/_/g, " ").replace(/^zone(\d)/, "Zone $1 —"),
+                percent: pct,
+              }))
+              // jsonb hands these back ordered by key length, not by zone — sort explicitly.
+              .sort((a, b) => a.zone - b.zone)}
+            power={power}
+            wristPowerCaveat={WRIST_POWER_CAVEAT}
+          />
         </Card>
-      )}
+      ) : null}
 
       {facts?.paceFade && (
         <Card title="Pace fade" className="mb-6">

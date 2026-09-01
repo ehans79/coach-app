@@ -1,4 +1,4 @@
-import { getZoneReference, getVdotView } from "@/lib/dashboard/queries";
+import { getZoneReference, getVdotView, getPowerDurationView, WRIST_POWER_CAVEAT } from "@/lib/dashboard/queries";
 
 export const dynamic = "force-dynamic";
 import { Card } from "@/components/Card";
@@ -11,7 +11,7 @@ const ZONE_COLOR = ["var(--zone-1)", "var(--zone-2)", "var(--zone-3)", "var(--zo
 const STALE_THRESHOLD_DAYS = 180;
 
 export default async function ZonesPage() {
-  const [zones, vdot] = await Promise.all([getZoneReference(), getVdotView()]);
+  const [zones, vdot, power] = await Promise.all([getZoneReference(), getVdotView(), getPowerDurationView()]);
   const purposeByZone = new Map(vdot.paces.map((p) => [p.zone, p.purpose]));
 
   if (!zones) {
@@ -84,6 +84,46 @@ export default async function ZonesPage() {
           </table>
         </div>
       </Card>
+
+      {power.fit && power.zones.length > 0 && (
+        <Card
+          title="Power zones"
+          subtitle={`% of Critical Power (${Math.round(power.fit.criticalPowerWatts)}W, fitted ${power.fit.asOfDate})`}
+          className="mb-4"
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-ink-muted">
+                  <th className="pb-2 font-medium">Zone</th>
+                  <th className="pb-2 font-medium">Power</th>
+                </tr>
+              </thead>
+              <tbody>
+                {power.zones.map((z) => (
+                  <tr key={z.zone} className="border-t border-gridline">
+                    <td className="py-2 whitespace-nowrap">
+                      Zone {z.zone} — {z.name}
+                      <span className="ml-1.5 text-xs text-ink-muted">
+                        {z.lowPercentOfCp}
+                        {z.highPercentOfCp != null ? `\u2013${z.highPercentOfCp}` : "+"}% CP
+                      </span>
+                    </td>
+                    <td className="py-2 whitespace-nowrap text-ink-secondary tabular-nums">
+                      {z.lowWatts}
+                      {z.highWatts != null ? `\u2013${z.highWatts}` : "+"}W
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-4 text-xs leading-relaxed text-ink-muted">
+            An alternative view, not a replacement &mdash; HR and pace zones above still drive prescriptions. Switch any
+            individual run to power zones from its detail page. {WRIST_POWER_CAVEAT}
+          </p>
+        </Card>
+      )}
 
       <Card title="Pace zones">
         <div className="overflow-x-auto">
