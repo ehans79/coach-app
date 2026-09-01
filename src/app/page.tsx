@@ -1,4 +1,5 @@
 import { getThisWeekView } from "@/lib/dashboard/queries";
+import { assessTrainingStrain } from "@/lib/metrics/strain";
 
 // Data changes from ongoing Strava syncs/webhooks and the weekly regen job,
 // none of which correlate with a redeploy — always render fresh per request.
@@ -7,9 +8,10 @@ import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { WeekBanner } from "@/components/WeekBanner";
 import { DayCard } from "@/components/DayCard";
+import { StrainBanner } from "@/components/StrainBanner";
 
 export default async function ThisWeekPage() {
-  const week = await getThisWeekView();
+  const [week, strain] = await Promise.all([getThisWeekView(), assessTrainingStrain()]);
 
   if (!week) {
     return (
@@ -35,6 +37,12 @@ export default async function ThisWeekPage() {
         sessionsCompleted={week.sessionsCompleted}
         sessionsPlanned={week.sessionsPlanned}
       />
+
+      {strain.triggered && (
+        <div className="mt-4">
+          <StrainBanner assessment={strain} />
+        </div>
+      )}
 
       {week.planRationale && (
         <Card className="mt-4">

@@ -3,9 +3,11 @@ import { render } from "@react-email/components";
 import { db } from "@/lib/db/client";
 import { activities, activityComments, emailReports, dailyLoad } from "@/lib/db/schema";
 import { getEnv } from "@/lib/env";
-import { getZoneAdherenceTrend } from "@/lib/dashboard/queries";
+import { getVdotView, getZoneAdherenceTrend } from "@/lib/dashboard/queries";
 import { getWeeklyLoadContext } from "@/lib/coaching/commentary";
-import { formatKm, formatDuration } from "@/lib/format";
+import { assessTrainingStrain } from "@/lib/metrics/strain";
+import { getCurrentCriticalSpeed } from "@/lib/metrics/criticalSpeed";
+import { formatKm, formatDuration, formatPace } from "@/lib/format";
 import { buildZoneChartUrl, buildLoadChartUrl } from "./charts";
 import { sendEmail } from "./resend";
 import {
@@ -14,6 +16,8 @@ import {
   type WeeklyDebriefHighlight,
   type WeeklyDebriefNextSession,
   type WeeklyDebriefLoadContext,
+  type WeeklyDebriefFitness,
+  type WeeklyDebriefStrain,
   type AcwrBand,
 } from "./templates/WeeklyDebrief";
 import type { RegenerationResult } from "@/lib/coaching/regeneration";
@@ -75,6 +79,46 @@ async function buildLoadContext(weekStartDate: string, weekEndDate: string): Pro
       highPercent: totalSeconds > 0 ? (totals.high / totalSeconds) * 100 : 0,
     },
     loadChartUrl: chartRows.length > 1 ? buildLoadChartUrl(chartRows) : null,
+  };
+}
+
+/**
+ * The fitness block. `zonesUpdated` reads the active constants rather than the
+ * reconciliation's return value, since the promotion normally happens during the hourly
+ * sync that ran when the race landed, not in this job — so "did the zones move because
+ * of this effort?" is the question that survives either path.
+ */
+async function buildFitness(weekEndDate: string): Promise<WeeklyDebriefFitness | null> {
+  const [view, cs] = await Promise.all([getVdotView(), getCurrentCriticalSpeed()]);
+  if (!view.current) return null;
+  const { current } = view;
+
+  return {
+    vdot: current.vdot,
+    effortDate: current.effortDate,
+    effortLabel: `${current.distanceKm.toFixed(2)}km in ${formatDuration(current.durationSeconds)}`,
+    sourceLabel: current.source === "strava_race" ? "race" : "time-trial-quality effort",
+    change: view.changeVsPrevious
+      ? {
+          delta: view.changeVsPrevious.delta,
+          previousVdot: view.changeVsPrevious.previousVdot,
+          previousDate: view.changeVsPrevious.previousDate,
+        }
+      : null,
+    thresholdPaceLabel: view.activeThreshold ? formatPace(view.activeThreshold.thresholdPaceSecPerKm) : null,
+    zonesUpdated: view.activeThreshold?.derivedFromVdot === true && view.activeThreshold.asOfDate <= weekEndDate,
+    criticalSpeedPaceLabel: cs ? formatPace(cs.criticalSpeedPaceSecPerKm) : null,
+  };
+}
+
+async function buildStrain(weekEndDate: string): Promise<WeeklyDebriefStrain | null> {
+  const assessment = await assessTrainingStrain(weekEndDate);
+  if (!assessment.triggered || assessment.severity === "none") return null;
+  return {
+    severity: assessment.severity,
+    headline: assessment.headline,
+    body: assessment.body,
+    firedSignals: assessment.signals.filter((s) => s.fired).map((s) => ({ label: s.label, detail: s.detail })),
   };
 }
 
@@ -145,7 +189,11 @@ export async function sendWeeklyDebrief(regen: RegenerationResult): Promise<void
       primaryZone: w.primaryZone ?? null,
     }));
 
-  const loadContext = await buildLoadContext(assessment.weekStartDate, assessment.weekEndDate);
+  const [loadContext, fitness, strain] = await Promise.all([
+    buildLoadContext(assessment.weekStartDate, assessment.weekEndDate),
+    buildFitness(assessment.weekEndDate),
+    buildStrain(assessment.weekEndDate),
+  ]);
 
   const html = await render(
     WeeklyDebrief({
@@ -162,6 +210,8 @@ export async function sendWeeklyDebrief(regen: RegenerationResult): Promise<void
       rationale: regen.rationale,
       dashboardUrl: env.APP_BASE_URL,
       loadContext,
+      fitness,
+      strain,
     })
   );
 

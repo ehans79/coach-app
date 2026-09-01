@@ -104,6 +104,49 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
         {activity.sufferScore != null && <StatTile label="Suffer score" value={`${activity.sufferScore}`} />}
       </div>
 
+      {(activity.durability || activity.qualifyingEffort) && (
+        <Card title="Race read" className="mb-6">
+          {activity.qualifyingEffort && (
+            <div className="mb-4">
+              <div className="flex items-baseline gap-2">
+                <span className="font-mono text-2xl font-bold text-ink-primary tabular-nums">
+                  {activity.qualifyingEffort.vdot.toFixed(1)}
+                </span>
+                <span className="text-sm text-ink-secondary">VDOT from this effort</span>
+              </div>
+              <p className="mt-1 text-xs leading-relaxed text-ink-muted">
+                {activity.qualifyingEffort.source === "strava_race"
+                  ? "Tagged as a race in Strava."
+                  : `Detected as a time-trial-quality effort: ${activity.qualifyingEffort.detectionNotes.join("; ")}.`}{" "}
+                Computed via the Daniels-Gilbert equations from the grade-adjusted distance.
+              </p>
+            </div>
+          )}
+
+          {activity.durability && (
+            <div className={activity.qualifyingEffort ? "border-t border-gridline pt-4" : undefined}>
+              <div className="flex items-baseline gap-2">
+                <span className="font-mono text-2xl font-bold text-ink-primary tabular-nums">
+                  {activity.durability.percentOfCriticalSpeed.toFixed(0)}%
+                </span>
+                <span className="text-sm text-ink-secondary">of Critical Speed sustained</span>
+              </div>
+              <p className="mt-1 text-sm text-ink-secondary">
+                Held {activity.durability.percentOfCriticalSpeed.toFixed(0)}% of your fitted Critical Speed (
+                {formatPace(activity.durability.criticalSpeedPaceSecPerKm)}, fitted {activity.durability.csAsOfDate}).
+                For orientation, world-class marathoners average around{" "}
+                {activity.durability.eliteBenchmarkPercent}% of CS over a marathon and recreational runners around{" "}
+                {activity.durability.recreationalBenchmarkPercent}%.
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-ink-muted">
+                {activity.durability.benchmarkCaveat} A higher number isn&rsquo;t automatically a better race &mdash;
+                it&rsquo;s a description of how much of your ceiling the effort used, not a target to chase.
+              </p>
+            </div>
+          )}
+        </Card>
+      )}
+
       {facts?.prescription && (
         <Card title="Prescribed workout" className="mb-6">
           <div className="text-sm font-medium text-ink-primary">{facts.prescription.name}</div>

@@ -23,6 +23,41 @@ export async function getCurrentHrZones(): Promise<HrZoneDef[]> {
   return row.hrZones as HrZoneDef[];
 }
 
+export interface PaceZoneDef {
+  zone: number;
+  name: string;
+  paceMinPerKm: string;
+}
+
+export interface CurrentZoneVersion {
+  asOfDate: string;
+  source: string;
+  hrZones: HrZoneDef[];
+  paceZones: PaceZoneDef[];
+}
+
+/**
+ * The live zone version, HR and pace together. The plan generator reads this rather
+ * than the copy frozen inside plan_json — once a VDOT lands, the Daniels paces replace
+ * the seeded Strava ones, and a plan prescribed against the old table would be handing
+ * out paces the athlete's own fitness estimate has already moved past.
+ */
+export async function getCurrentZoneVersion(): Promise<CurrentZoneVersion | null> {
+  const [row] = await db
+    .select()
+    .from(zoneVersions)
+    .where(eq(zoneVersions.isCurrent, true))
+    .orderBy(desc(zoneVersions.asOfDate))
+    .limit(1);
+  if (!row) return null;
+  return {
+    asOfDate: row.asOfDate,
+    source: row.source,
+    hrZones: row.hrZones as HrZoneDef[],
+    paceZones: row.paceZones as PaceZoneDef[],
+  };
+}
+
 export function bucketizeHrZone(hr: number, zones: HrZoneDef[]): number {
   const sorted = [...zones].sort((a, b) => a.zone - b.zone);
   for (const z of sorted) {

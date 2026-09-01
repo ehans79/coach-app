@@ -6,6 +6,7 @@ import {
   activityMetrics,
   activityMetricReps,
   activityStreams,
+  athleteConstants,
   dailyLoad,
   planWorkouts,
   planWorkoutExercises,
@@ -17,6 +18,23 @@ import type { CommentaryFacts } from "@/lib/coaching/commentary";
 import { ROLLING_WEEKS } from "@/lib/dashboard/constants";
 import { extractStreamArrays } from "@/lib/coaching/streams";
 import { computeGradedSpeedSeries } from "@/lib/metrics/ngp";
+import { danielsTrainingPaces, type DanielsTrainingPace } from "@/lib/metrics/vdot";
+import {
+  getCurrentVdot,
+  getQualifyingEffortForActivity,
+  getVdotHistory,
+  QUALIFYING_EFFORT_WINDOW_DAYS,
+  type VdotHistoryPoint,
+} from "@/lib/metrics/qualifyingEfforts";
+import { getBestEfforts, type BestEffortPoint } from "@/lib/metrics/bestEfforts";
+import {
+  computePercentOfCriticalSpeed,
+  getCurrentCriticalSpeed,
+  predictedSpeedAt,
+  CS_BENCHMARK_ELITE_MARATHON_PERCENT,
+  CS_BENCHMARK_RECREATIONAL_MARATHON_PERCENT,
+  type CurrentCriticalSpeed,
+} from "@/lib/metrics/criticalSpeed";
 import type { StravaStreamSet } from "@/lib/strava/types";
 
 function mondayOf(dateStr: string): string {
@@ -294,6 +312,21 @@ export interface ActivityDetail {
     efficiencyFactor: number | null;
     decouplingPercent: number | null;
   } | null;
+  /** Race efforts only, and only once a Critical Speed fit exists. */
+  durability: {
+    percentOfCriticalSpeed: number;
+    criticalSpeedPaceSecPerKm: number;
+    csAsOfDate: string;
+    benchmarkCaveat: string;
+    eliteBenchmarkPercent: number;
+    recreationalBenchmarkPercent: number;
+  } | null;
+  /** Set when this run was detected as a race-quality effort and carries a VDOT. */
+  qualifyingEffort: {
+    vdot: number;
+    source: "strava_race" | "time_trial_heuristic";
+    detectionNotes: string[];
+  } | null;
 }
 
 export async function getActivityDetail(id: number): Promise<ActivityDetail | null> {
@@ -307,6 +340,16 @@ export async function getActivityDetail(id: number): Promise<ActivityDetail | nu
     .limit(1);
 
   const [metrics] = await db.select().from(activityMetrics).where(eq(activityMetrics.activityId, id)).limit(1);
+  const effort = await getQualifyingEffortForActivity(id);
+
+  // Grade-adjusted average speed over the effort — the same footing the CS fit was
+  // built on, so a hilly race isn't measured against a flatter-terrain Critical Speed.
+  const gradedSpeedMps =
+    metrics?.gapAvgPaceSecPerKm && metrics.gapAvgPaceSecPerKm > 0 ? 1000 / metrics.gapAvgPaceSecPerKm : null;
+  const durabilityRead =
+    metrics?.runType === "race" && gradedSpeedMps != null && activity.movingTimeSeconds
+      ? await computePercentOfCriticalSpeed(gradedSpeedMps, activity.movingTimeSeconds)
+      : null;
 
   return {
     id: activity.id,
@@ -339,6 +382,20 @@ export async function getActivityDetail(id: number): Promise<ActivityDetail | nu
           isSteady: metrics.isSteady,
           efficiencyFactor: metrics.efficiencyFactor,
           decouplingPercent: metrics.decouplingPercent,
+        }
+      : null,
+    durability: durabilityRead
+      ? {
+          ...durabilityRead,
+          eliteBenchmarkPercent: CS_BENCHMARK_ELITE_MARATHON_PERCENT,
+          recreationalBenchmarkPercent: CS_BENCHMARK_RECREATIONAL_MARATHON_PERCENT,
+        }
+      : null,
+    qualifyingEffort: effort
+      ? {
+          vdot: Math.round(effort.vdot * 10) / 10,
+          source: effort.source,
+          detectionNotes: (effort.detectionNotes as string[] | null) ?? [],
         }
       : null,
   };
@@ -507,6 +564,157 @@ export async function getZoneReference(): Promise<ZoneReference | null> {
     daysSinceValidated,
     hrZones: row.hrZones as ZoneReference["hrZones"],
     paceZones: row.paceZones as ZoneReference["paceZones"],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// VDOT — current estimate, its trend, and the Daniels paces derived from it
+// ---------------------------------------------------------------------------
+
+export interface VdotView {
+  /** Null until a first race-quality effort has been detected. */
+  current: {
+    vdot: number;
+    effortDate: string;
+    daysAgo: number;
+    activityId: number;
+    activityName: string;
+    source: "strava_race" | "time_trial_heuristic";
+    distanceKm: number;
+    durationSeconds: number;
+  } | null;
+  /** Change vs. the previous qualifying effort — what the weekly email reports on. */
+  changeVsPrevious: { delta: number; previousVdot: number; previousDate: string } | null;
+  /**
+   * The most recent qualifying effort of any age, set only when it has aged out of the
+   * window (so `current` is null). Showing a number the athlete earned, clearly marked
+   * as out of date, beats showing nothing and pretending the history is empty — while
+   * still keeping a stale effort from silently driving the active zones.
+   */
+  lastKnown: { vdot: number; effortDate: string; daysAgo: number; activityName: string } | null;
+  history: VdotHistoryPoint[];
+  paces: DanielsTrainingPace[];
+  /** The threshold pace the load engine is currently using, and whether it came from VDOT. */
+  activeThreshold: {
+    thresholdPaceSecPerKm: number;
+    asOfDate: string;
+    isProvisional: boolean;
+    derivedFromVdot: boolean;
+    source: string;
+  } | null;
+  windowDays: number;
+}
+
+export async function getVdotView(): Promise<VdotView> {
+  const [current, history, constantsRow] = await Promise.all([
+    getCurrentVdot(),
+    getVdotHistory(),
+    db
+      .select()
+      .from(athleteConstants)
+      .where(eq(athleteConstants.isCurrent, true))
+      .orderBy(desc(athleteConstants.asOfDate))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+  ]);
+
+  const currentActivity = current ? history.find((h) => h.activityId === current.activityId) : undefined;
+  const mostRecent = history.length > 0 ? history[history.length - 1] : null;
+  const lastKnown =
+    !current && mostRecent
+      ? {
+          vdot: mostRecent.vdot,
+          effortDate: mostRecent.effortDate,
+          daysAgo: Math.round(
+            (Date.now() - new Date(`${mostRecent.effortDate}T00:00:00Z`).getTime()) / 86_400_000
+          ),
+          activityName: mostRecent.activityName,
+        }
+      : null;
+
+  // "Previous" is the most recent qualifying effort BEFORE the current one's date — the
+  // comparison a runner actually means by "since last check", rather than the previous
+  // best (which by definition can only ever go up).
+  const earlier = current ? history.filter((h) => h.effortDate < current.effortDate) : [];
+  const previous = earlier.length > 0 ? earlier[earlier.length - 1] : null;
+
+  return {
+    current: current
+      ? {
+          vdot: Math.round(current.vdot * 10) / 10,
+          effortDate: current.effortDate,
+          daysAgo: current.daysAgo,
+          activityId: current.activityId,
+          activityName: currentActivity?.activityName ?? "Qualifying effort",
+          source: current.source,
+          distanceKm: current.distanceMeters / 1000,
+          durationSeconds: current.durationSeconds,
+        }
+      : null,
+    lastKnown,
+    changeVsPrevious:
+      current && previous
+        ? {
+            delta: Math.round((current.vdot - previous.vdot) * 10) / 10,
+            previousVdot: previous.vdot,
+            previousDate: previous.effortDate,
+          }
+        : null,
+    history,
+    paces: current ? danielsTrainingPaces(current.vdot) : [],
+    activeThreshold: constantsRow
+      ? {
+          thresholdPaceSecPerKm: constantsRow.thresholdPaceSecPerKm,
+          asOfDate: constantsRow.asOfDate,
+          isProvisional: constantsRow.isProvisional,
+          derivedFromVdot: constantsRow.vdotSourceActivityId != null,
+          source: constantsRow.source,
+        }
+      : null,
+    windowDays: QUALIFYING_EFFORT_WINDOW_DAYS,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Critical Speed — the mean-maximal pace curve with the fitted CS line
+// ---------------------------------------------------------------------------
+
+export interface MeanMaxCurvePoint {
+  durationSeconds: number;
+  gradedPaceSecPerKm: number;
+  actualPaceSecPerKm: number | null;
+  /** The fitted model's prediction at this duration, when a fit exists. */
+  fittedPaceSecPerKm: number | null;
+  activityId: number;
+  activityName: string;
+  achievedOn: string;
+  /** Whether this point was inside the 2-30 min window the fit was computed over. */
+  usedInFit: boolean;
+}
+
+export interface CriticalSpeedView {
+  points: MeanMaxCurvePoint[];
+  fit: CurrentCriticalSpeed | null;
+  csPaceSecPerKm: number | null;
+}
+
+export async function getCriticalSpeedView(): Promise<CriticalSpeedView> {
+  const [efforts, fit] = await Promise.all([getBestEfforts(), getCurrentCriticalSpeed()]);
+  const fitDurations = new Set((fit?.points ?? []).map((p) => p.durationSeconds));
+
+  return {
+    points: efforts.map((e: BestEffortPoint) => ({
+      durationSeconds: e.durationSeconds,
+      gradedPaceSecPerKm: e.gradedPaceSecPerKm,
+      actualPaceSecPerKm: e.actualPaceSecPerKm,
+      fittedPaceSecPerKm: fit ? 1000 / predictedSpeedAt(fit, e.durationSeconds) : null,
+      activityId: e.activityId,
+      activityName: e.activityName,
+      achievedOn: e.achievedOn,
+      usedInFit: fitDurations.has(e.durationSeconds),
+    })),
+    fit,
+    csPaceSecPerKm: fit ? fit.criticalSpeedPaceSecPerKm : null,
   };
 }
 

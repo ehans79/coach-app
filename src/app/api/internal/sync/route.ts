@@ -5,6 +5,7 @@ import { findUncommentedRunActivityIds, generateCommentaryForActivity } from "@/
 import { findUnmatchedActivityIds, matchAndMarkCompletion } from "@/lib/coaching/matching";
 import { computeMetricsForActivity, findUnmetricatedRunActivityIds } from "@/lib/metrics/pipeline";
 import { computeDailyRollup } from "@/lib/metrics/rollup";
+import { reconcileVdotIntoZones } from "@/lib/metrics/qualifyingEfforts";
 
 /**
  * Fallback poll target — hit on an hourly Railway cron schedule (separate
@@ -44,6 +45,12 @@ export async function POST(request: NextRequest) {
 
   const rollup = await computeDailyRollup();
 
+  // Once per batch, not per activity: promotes the best recent qualifying effort's VDOT
+  // into the active threshold pace + Daniels pace zones. A no-op unless a new
+  // race-quality effort actually moved the number. Runs BEFORE commentary so a new
+  // race's own comment is written against the zones it just produced.
+  const vdot = await reconcileVdotIntoZones();
+
   const uncommented = await findUncommentedRunActivityIds();
   let commentsGenerated = 0;
   for (const activityId of uncommented) {
@@ -55,5 +62,5 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ...syncResult, matched: unmatched.length, metricsComputed, rollup, commentsGenerated });
+  return NextResponse.json({ ...syncResult, matched: unmatched.length, metricsComputed, rollup, vdot, commentsGenerated });
 }

@@ -6,7 +6,10 @@ import { getActivityLaps } from "@/lib/strava/client";
 import type { StravaStreamSet, StravaLap } from "@/lib/strava/types";
 import { extractStreamArrays } from "@/lib/coaching/streams";
 import { getCurrentHrZones, computeZoneTimeDistribution } from "@/lib/coaching/zones";
+import { localDateOf } from "@/lib/coaching/matching";
 import { getCurrentAthleteConstants } from "./constants";
+import { updateBestEffortsForActivity } from "./bestEfforts";
+import { recordQualifyingEffort } from "./qualifyingEfforts";
 import { computeNGP, computeAverageGapPace, computeAvgGradePercent } from "./ngp";
 import { computeTrimp } from "./trimp";
 import { computeRTss, computeHrTss, pickPrimaryTss } from "./tss";
@@ -123,6 +126,38 @@ export async function computeMetricsForActivity(activityId: number): Promise<voi
       await tx.insert(activityMetricReps).values(repRows.map((r) => ({ ...r, activityId })));
     }
   });
+
+  // Stage-2 per-activity work. Both reuse the streams already in hand, so neither
+  // costs a Strava call. Deliberately NOT wrapped in the transaction above: a failure
+  // here is a missing chart point, not a reason to lose the run's core metrics.
+  //
+  // Note what is *not* here — promoting a new qualifying effort into the athlete's
+  // active threshold/zones, and refitting Critical Speed. Both are batch-level
+  // decisions ("which effort is the best one now?", "has the curve moved?") that would
+  // churn a version row per activity if run inside this loop, so the callers run them
+  // once after their batch (see reconcileVdotIntoZones / refitCriticalSpeed).
+  try {
+    await updateBestEffortsForActivity(activityId, localDateOf(activity.startDateLocal), stream);
+  } catch (err) {
+    console.error(`Failed to update best efforts for activity ${activityId}`, err);
+  }
+  try {
+    await recordQualifyingEffort({
+      activityId,
+      workoutType: activity.workoutType,
+      startDateLocal: activity.startDateLocal,
+      distanceMeters: activity.distanceMeters,
+      movingTimeSeconds: activity.movingTimeSeconds,
+      averageHeartrate: activity.averageHeartrate,
+      maxHeartrate: activity.maxHeartrate,
+      runType,
+      lapStructure,
+      stream,
+      constants,
+    });
+  } catch (err) {
+    console.error(`Failed to evaluate activity ${activityId} as a qualifying effort`, err);
+  }
 }
 
 // Matches FALLBACK_POLL_LOOKBACK_DAYS in commentary.ts — bounds the hourly/webhook

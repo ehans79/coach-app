@@ -13,6 +13,12 @@ import { formatKm, formatDuration, formatPace, formatTempC } from "@/lib/format"
 import type { ZoneAdherenceAssessment } from "./zones";
 import type { CadenceFade, PaceFade } from "./streams";
 import type { RunType, RunTypeSource } from "@/lib/metrics/classify";
+import { getBestVdotBefore, getQualifyingEffortForActivity } from "@/lib/metrics/qualifyingEfforts";
+import {
+  computePercentOfCriticalSpeed,
+  CS_BENCHMARK_ELITE_MARATHON_PERCENT,
+  CS_BENCHMARK_RECREATIONAL_MARATHON_PERCENT,
+} from "@/lib/metrics/criticalSpeed";
 
 type Flag = "none" | "watch" | "correct";
 
@@ -53,6 +59,8 @@ Documented thresholds — only flag something as a problem when it actually cros
 - Aerobic decoupling: <5% is good aerobic durability, 5-10% is unremarkable, >10% is worth flagging (fatigue, heat, dehydration, or under-conditioning — not necessarily a training failure).
 - ACWR (acute:chronic workload ratio): 0.8-1.3 is the "sweet spot," >1.5 is worth a mention as elevated.
 
+VDOT and Critical Speed are estimates too, and rougher ones than the load metrics — VDOT assumes the effort was genuinely all-out on an accurate course, and the Critical Speed fit is built from ordinary training runs rather than maximal tests, so it reads low until some truly hard efforts accumulate. Talk about them as a current best guess that sharpens over time, never as a measured capacity.
+
 CTL/ATL/TSB/ACWR/decoupling are models built from Edu's own training data, not lab-measured facts — talk about them the way a coach reads a training log, never as a diagnostic printout ("your ACWR is 1.6" is not how a coach talks; "you've ramped up faster than usual the last week or two" is).
 
 Apply ONLY the guidance below matching facts.runType.value — the others aren't relevant to this run:
@@ -60,7 +68,7 @@ Apply ONLY the guidance below matching facts.runType.value — the others aren't
 - tempo: was the effort actually in the threshold band (facts.load.intensityFactor near 1.0, roughly 0.95-1.05)? Note decoupling across the effort if present — that's the durability read on a tempo block, not just the pace.
 - interval: this is about per-rep execution, not aerobic durability — walk through facts.intervalReps: pace/GAP consistency across reps, the fade % from first to last rep, whether HR recovered between reps. Don't discuss EF or decoupling here (facts.aerobicDurability will be null) — it's not meaningful on a rep-structured session.
 - long: decoupling over the whole run is the durability read (>5% late in a long run points to an endurance ceiling, fueling, or heat — information, not a training failure); note any late-run pace/GAP fade alongside it.
-- race: talk about pacing evenness (splits/fade) and how much of the effort held up — a performance read, not a training-load one.
+- race: talk about pacing evenness (splits/fade) and how much of the effort held up — a performance read, not a training-load one. If facts.durability is present, work the "% of Critical Speed sustained" in as a durability read: it's the fraction of his own fitted sustainable-speed ceiling this effort held. Give the benchmarks (facts.durability.eliteMarathonBenchmarkPercent / recreationalMarathonBenchmarkPercent) as a rough orientation only, never as a target — a higher % is not automatically a better race, and going out harder to chase one is how a race falls apart. Honour facts.durability.caveat: the benchmarks were measured over marathons, so a shorter effort naturally sits higher on the curve. If facts.vdot is present, mention the new fitness estimate and whether it moved (facts.vdot.isNewBest / previousVdot) — "that's your best estimated fitness yet" reads far better than reciting the number alone.
 - recovery: the main question is whether it actually stayed easy — flag it if the HR or pace looked too hard given how depleted facts.weeklyLoad.tsb (if present and negative) suggests he should be.
 
 Weave the weekly-load context in naturally when it's relevant to the story — the run itself is still the headline, not the training-load numbers.`;
@@ -141,6 +149,23 @@ export interface CommentaryFacts {
     acwr: number | null;
     ctlRampPerWeek: number;
   } | null;
+
+  /** Only populated for race efforts, and only once a Critical Speed fit exists. */
+  durability: {
+    percentOfCriticalSpeed: number;
+    criticalSpeedPace: string;
+    eliteMarathonBenchmarkPercent: number;
+    recreationalMarathonBenchmarkPercent: number;
+    caveat: string;
+  } | null;
+
+  /** Set when this run was detected as race-quality and produced a new VDOT reading. */
+  vdot: {
+    value: number;
+    source: "strava_race" | "time_trial_heuristic";
+    isNewBest: boolean;
+    previousVdot: number | null;
+  } | null;
 }
 
 export interface WeeklyLoadContext {
@@ -190,7 +215,9 @@ function buildFacts(
   weather: WeatherSnapshot | null,
   metricsRow: typeof activityMetrics.$inferSelect | null,
   repRows: (typeof activityMetricReps.$inferSelect)[],
-  weeklyLoad: WeeklyLoadContext | null
+  weeklyLoad: WeeklyLoadContext | null,
+  durability: CommentaryFacts["durability"],
+  vdot: CommentaryFacts["vdot"]
 ): CommentaryFacts {
   const avgPaceSecPerKm =
     activity.movingTimeSeconds && activity.distanceMeters
@@ -274,6 +301,8 @@ function buildFacts(
           }))
         : null,
     weeklyLoad: weeklyLoad,
+    durability,
+    vdot,
   };
 }
 
@@ -325,6 +354,35 @@ export async function generateCommentaryForActivity(activityId: number): Promise
       : [];
   const weeklyLoad = await getWeeklyLoadContext(localDateOf(activity.startDateLocal));
 
+  // Stage-2 race reads. Both stay null on ordinary runs, and the system prompt only
+  // asks the model to use them when they're present.
+  const effort = await getQualifyingEffortForActivity(activityId);
+  let durability: CommentaryFacts["durability"] = null;
+  if (metricsRow?.runType === "race" && metricsRow.gapAvgPaceSecPerKm && activity.movingTimeSeconds) {
+    const read = await computePercentOfCriticalSpeed(1000 / metricsRow.gapAvgPaceSecPerKm, activity.movingTimeSeconds);
+    if (read) {
+      durability = {
+        percentOfCriticalSpeed: Math.round(read.percentOfCriticalSpeed * 10) / 10,
+        criticalSpeedPace: formatPace(read.criticalSpeedPaceSecPerKm),
+        eliteMarathonBenchmarkPercent: CS_BENCHMARK_ELITE_MARATHON_PERCENT,
+        recreationalMarathonBenchmarkPercent: CS_BENCHMARK_RECREATIONAL_MARATHON_PERCENT,
+        caveat: read.benchmarkCaveat,
+      };
+    }
+  }
+  let vdotFacts: CommentaryFacts["vdot"] = null;
+  if (effort) {
+    // "Best before this one" — so the comment can say whether the effort actually moved
+    // the estimate, rather than just restating the number.
+    const priorBest = await getBestVdotBefore(effort.effortDate);
+    vdotFacts = {
+      value: Math.round(effort.vdot * 10) / 10,
+      source: effort.source,
+      isNewBest: priorBest == null || effort.vdot > priorBest,
+      previousVdot: priorBest != null ? Math.round(priorBest * 10) / 10 : null,
+    };
+  }
+
   const flag = determineFlag(
     zoneAssessment,
     cadenceDelta,
@@ -342,7 +400,9 @@ export async function generateCommentaryForActivity(activityId: number): Promise
     weather,
     metricsRow ?? null,
     repRows,
-    weeklyLoad
+    weeklyLoad,
+    durability,
+    vdotFacts
   );
 
   const commentText = await generateText({

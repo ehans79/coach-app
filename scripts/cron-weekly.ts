@@ -6,6 +6,8 @@ import { findUncommentedRunActivityIds, generateCommentaryForActivity } from "..
 import { findUnmatchedActivityIds, matchAndMarkCompletion } from "../src/lib/coaching/matching";
 import { computeMetricsForActivity, findUnmetricatedRunActivityIds } from "../src/lib/metrics/pipeline";
 import { computeDailyRollup } from "../src/lib/metrics/rollup";
+import { reconcileVdotIntoZones } from "../src/lib/metrics/qualifyingEfforts";
+import { refitCriticalSpeed } from "../src/lib/metrics/criticalSpeed";
 import { regeneratePlanForNextWeek, PlanNotStartedYetError } from "../src/lib/coaching/regeneration";
 import { sendWeeklyDebrief } from "../src/lib/email/sendWeeklyDebrief";
 
@@ -42,6 +44,21 @@ async function main() {
   console.log("Rolling up daily training load...");
   const rollup = await computeDailyRollup();
   console.log(`Rolled up ${rollup.daysComputed} days.`);
+
+  // Catch-up for the hourly sync's own reconciliation — self-healing if a webhook or
+  // poll cycle failed midway and left a detected qualifying effort unpromoted.
+  const vdot = await reconcileVdotIntoZones();
+  console.log(vdot.applied ? `VDOT/zones updated: ${vdot.reason}` : `VDOT/zones unchanged: ${vdot.reason}`);
+
+  // Critical Speed is refit weekly rather than on every sync: one activity rarely moves
+  // the mean-maximal curve, and a nightly refit would fill the version history with
+  // near-identical fits.
+  const csFit = await refitCriticalSpeed();
+  console.log(
+    csFit.fit
+      ? `Critical Speed refit: ${csFit.fit.criticalSpeedMps.toFixed(3)} m/s, D' ${csFit.fit.dPrimeMeters.toFixed(0)}m, r²=${csFit.fit.rSquared.toFixed(3)} over ${csFit.fit.points.length} points.`
+      : `Critical Speed not refit: ${csFit.reason}`
+  );
 
   const uncommented = await findUncommentedRunActivityIds();
   for (const activityId of uncommented) {

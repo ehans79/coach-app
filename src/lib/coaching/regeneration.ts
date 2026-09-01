@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { plans, planWorkouts, planWorkoutExercises } from "@/lib/db/schema";
 import { assessWeek, type WeekAssessment } from "./weeklyAssessment";
+import { getCurrentZoneVersion, type CurrentZoneVersion } from "./zones";
 import { computeGuardrails, type Guardrails } from "./guardrails";
 import { flattenPlanWorkouts, type PlanDocument, type PlanWeekJson, type PlanDayJson } from "./plan";
 import { generateStructured, COACHING_MODEL } from "@/lib/llm/anthropic";
@@ -108,9 +109,12 @@ function buildPrompt(params: {
   assessment: WeekAssessment;
   guardrails: Guardrails;
   referenceWeek: PlanWeekJson | undefined;
+  currentZones: CurrentZoneVersion | null;
 }): string {
   return `Athlete assessment (from the original plan): ${JSON.stringify(params.plan.assessment)}
-Current HR/pace zones: ${JSON.stringify(params.plan.zones)}
+Current HR/pace zones (live, as of ${params.currentZones?.asOfDate ?? "n/a"} — prescribe against THESE, not any zone table quoted elsewhere): ${JSON.stringify(
+    params.currentZones ?? params.plan.zones
+  )}
 Current phase: ${JSON.stringify(params.phase)}
 
 How last week (${params.assessment.weekStartDate} to ${params.assessment.weekEndDate}) actually went:
@@ -268,6 +272,7 @@ export async function regeneratePlanForNextWeek(todayStr: string): Promise<Regen
     planJson.phases[planJson.phases.length - 1];
   const referenceWeek = planJson.weeks.find((w) => w.weekNumber === weekNumber);
 
+  const currentZones = await getCurrentZoneVersion();
   const prompt = buildPrompt({
     plan: planJson,
     weekNumber,
@@ -277,6 +282,7 @@ export async function regeneratePlanForNextWeek(todayStr: string): Promise<Regen
     assessment,
     guardrails,
     referenceWeek,
+    currentZones,
   });
 
   const allExercises = await getAllExercises();

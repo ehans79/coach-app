@@ -6,6 +6,9 @@ import { db } from "../src/lib/db/client";
 import { activities } from "../src/lib/db/schema";
 import { computeMetricsForActivity } from "../src/lib/metrics/pipeline";
 import { computeDailyRollup } from "../src/lib/metrics/rollup";
+import { rebuildBestEfforts } from "../src/lib/metrics/bestEfforts";
+import { reconcileVdotIntoZones, redetectQualifyingEfforts } from "../src/lib/metrics/qualifyingEfforts";
+import { refitCriticalSpeed } from "../src/lib/metrics/criticalSpeed";
 
 // Delay between Strava calls (each activity costs up to 2: a streams refetch if
 // the cache predates grade_smooth/altitude/moving, plus a laps fetch, which is
@@ -23,6 +26,14 @@ function sleep(ms: number) {
  * re-run this after correcting athlete_constants (e.g. once a real threshold
  * pace/HR retest is available) — IF/rTSS/hrTSS/runType all shift with the
  * constants, and nothing recomputes historical rows automatically.
+ *
+ * IMPORTANT — this is the ONE path that rewrites history. Normal operation applies a
+ * new VDOT-derived threshold pace prospectively only: each activity_metrics row keeps
+ * the constants_id it was computed under, so past rTSS/IF values stay as they were
+ * measured. Running this re-derives every historical row against whatever constants are
+ * current NOW, which is a deliberate re-baseline (useful right after a first real VDOT
+ * lands and the seed's provisional threshold is known to have been wrong) and not
+ * something to run casually.
  *
  *   npm run backfill:metrics
  */
@@ -56,6 +67,32 @@ async function main() {
   console.log("Rolling up daily training load...");
   const rollup = await computeDailyRollup();
   console.log(`Rolled up ${rollup.daysComputed} days.`);
+
+  // The pipeline's incremental best-effort update can only ever RAISE a best, so after a
+  // re-baseline it would leave stale rows standing from activities that no longer hold
+  // the record. Full rescan instead — it reads only cached streams, no Strava calls.
+  console.log("Rebuilding the mean-maximal best-efforts curve...");
+  const rebuilt = await rebuildBestEfforts();
+  console.log(`Filled ${rebuilt.durationsFilled} durations from ${rebuilt.activitiesScanned} runs.`);
+
+  // Re-runs the race/time-trial detector over the whole history from cached streams.
+  // Redundant with the per-activity pass above on a full backfill, but it's the path
+  // that re-applies tuned detection thresholds without touching Strava.
+  console.log("Re-detecting race-quality efforts...");
+  const detected = await redetectQualifyingEfforts();
+  console.log(`${detected.qualified} of ${detected.scanned} runs qualify for a VDOT estimate.`);
+
+  // Once, at the end — the per-activity loop above only DETECTS qualifying efforts;
+  // promoting the best one into the active threshold/zones is a whole-history decision.
+  const vdot = await reconcileVdotIntoZones();
+  console.log(vdot.applied ? `VDOT/zones updated: ${vdot.reason}` : `VDOT/zones unchanged: ${vdot.reason}`);
+
+  const csFit = await refitCriticalSpeed();
+  console.log(
+    csFit.fit
+      ? `Critical Speed: ${csFit.fit.criticalSpeedMps.toFixed(3)} m/s (${Math.round(csFit.fit.criticalSpeedPaceSecPerKm)}s/km), D' ${csFit.fit.dPrimeMeters.toFixed(0)}m, r²=${csFit.fit.rSquared.toFixed(3)}.`
+      : `Critical Speed not fit: ${csFit.reason}`
+  );
 
   process.exit(0);
 }

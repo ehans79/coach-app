@@ -1,5 +1,5 @@
 import type { StreamData } from "@/lib/coaching/streams";
-import { computeNGPRange, sampleDeltaSeconds } from "./ngp";
+import { computeNGPRange, computeGradedSpeedSeries, sampleDeltaSeconds } from "./ngp";
 
 const BIN_SECONDS = 60;
 // Calibrated against this athlete's actual backfilled history, not generic
@@ -20,7 +20,23 @@ export interface SteadinessResult {
 
 /** Bins velocity_smooth into 60s time buckets (time-weighted avg per bucket) and computes the coefficient of variation across bins. */
 export function computeSteadiness(stream: StreamData): SteadinessResult {
-  const { time, velocitySmooth } = stream;
+  return steadinessOfSpeedSeries(stream, stream.velocitySmooth);
+}
+
+/**
+ * The same evenness test run on Minetti grade-adjusted speed instead of raw speed.
+ * On rolling terrain a genuinely even EFFORT produces uneven raw pace — which is why
+ * the race/time-trial detector (qualifyingEfforts.ts) tests evenness this way, while
+ * the EF/decoupling gate above deliberately keeps using raw speed (decoupling is only
+ * defensible on a run that was steady in the ordinary sense, hills included).
+ */
+export function computeGradedSteadiness(stream: StreamData): SteadinessResult {
+  return steadinessOfSpeedSeries(stream, computeGradedSpeedSeries(stream) ?? undefined);
+}
+
+function steadinessOfSpeedSeries(stream: StreamData, speeds: number[] | undefined): SteadinessResult {
+  const { time } = stream;
+  const velocitySmooth = speeds;
   if (!velocitySmooth || velocitySmooth.length === 0) return { isSteady: false, cvPercent: null };
   const n = Math.min(time.length, velocitySmooth.length);
 

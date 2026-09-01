@@ -7,6 +7,7 @@ import { syncSingleActivityDetail } from "@/lib/sync/activities";
 import { generateCommentaryForActivity } from "@/lib/coaching/commentary";
 import { matchAndMarkCompletion } from "@/lib/coaching/matching";
 import { computeMetricsForActivity } from "@/lib/metrics/pipeline";
+import { reconcileVdotIntoZones } from "@/lib/metrics/qualifyingEfforts";
 
 interface StravaWebhookEvent {
   aspect_type: "create" | "update" | "delete";
@@ -55,6 +56,9 @@ export async function POST(request: NextRequest) {
           await syncSingleActivityDetail(event.object_id);
           await matchAndMarkCompletion(event.object_id);
           await computeMetricsForActivity(event.object_id);
+          // Between metrics and commentary so that if this run WAS a race, the comment
+          // is written against the zones it just produced. A no-op on ordinary runs.
+          await reconcileVdotIntoZones();
           await generateCommentaryForActivity(event.object_id);
         } catch (err) {
           console.error(`Failed to process Strava webhook event for activity ${event.object_id}`, err);

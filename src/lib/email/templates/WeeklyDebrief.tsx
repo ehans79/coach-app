@@ -48,6 +48,26 @@ export interface WeeklyDebriefLoadContext {
   loadChartUrl: string | null;
 }
 
+export interface WeeklyDebriefFitness {
+  vdot: number;
+  effortDate: string;
+  effortLabel: string;
+  sourceLabel: string;
+  /** Null when this is the first qualifying effort — nothing to compare against yet. */
+  change: { delta: number; previousVdot: number; previousDate: string } | null;
+  thresholdPaceLabel: string | null;
+  /** Set only when this week's reconciliation actually moved the active zones. */
+  zonesUpdated: boolean;
+  criticalSpeedPaceLabel: string | null;
+}
+
+export interface WeeklyDebriefStrain {
+  severity: "elevated" | "high";
+  headline: string;
+  body: string;
+  firedSignals: { label: string; detail: string }[];
+}
+
 export interface WeeklyDebriefProps {
   weekRangeLabel: string;
   weekVerdict: string;
@@ -62,6 +82,8 @@ export interface WeeklyDebriefProps {
   rationale: string;
   dashboardUrl: string;
   loadContext: WeeklyDebriefLoadContext | null;
+  fitness: WeeklyDebriefFitness | null;
+  strain: WeeklyDebriefStrain | null;
 }
 
 function flagColor(flag: "watch" | "correct"): string {
@@ -81,6 +103,32 @@ function acwrBandColor(band: AcwrBand): string {
   if (band === "danger") return colors.serious;
   if (band === "elevated") return colors.warning;
   return colors.inkMuted;
+}
+
+// 0.3 VDOT is roughly 3-4 sec/km of threshold pace at this athlete's level — below
+// that, calling it an improvement or a decline would be reading noise (same threshold
+// the reconciliation uses before it will version the zones at all).
+const VDOT_MEANINGFUL_CHANGE = 0.3;
+
+function fitnessChangeColor(delta: number): string {
+  if (delta >= VDOT_MEANINGFUL_CHANGE) return colors.good;
+  if (delta <= -VDOT_MEANINGFUL_CHANGE) return colors.warning;
+  return colors.inkMuted;
+}
+
+function fitnessSentence(fitness: WeeklyDebriefFitness): string {
+  const from = `Estimated from your ${fitness.sourceLabel} on ${fitness.effortDate} (${fitness.effortLabel}).`;
+  if (!fitness.change) {
+    return `${from} This is your first race-quality effort on record, so there's nothing to compare it against yet — the estimate sharpens with each one.`;
+  }
+  const { delta, previousVdot } = fitness.change;
+  if (delta >= VDOT_MEANINGFUL_CHANGE) {
+    return `Your estimated fitness improved since the last check, up ${delta.toFixed(1)} from ${previousVdot.toFixed(1)}. ${from}`;
+  }
+  if (delta <= -VDOT_MEANINGFUL_CHANGE) {
+    return `Your estimated fitness came in ${Math.abs(delta).toFixed(1)} below the last check (${previousVdot.toFixed(1)}). One effort doesn't establish a decline — heat, terrain and how hard you actually raced all move this. ${from}`;
+  }
+  return `Your estimated fitness is level with the last check (${previousVdot.toFixed(1)}). ${from}`;
 }
 
 export function WeeklyDebrief(props: WeeklyDebriefProps) {
@@ -118,6 +166,44 @@ export function WeeklyDebrief(props: WeeklyDebriefProps) {
               {props.weekVerdict}
             </Heading>
           </Section>
+
+          {props.strain && (
+            <Section
+              style={{
+                backgroundColor: props.strain.severity === "high" ? "#f8e9de" : "#fbf1de",
+                borderTop: `1px solid ${colors.border}`,
+                borderRight: `1px solid ${colors.border}`,
+                borderBottom: `1px solid ${colors.border}`,
+                borderLeft: `4px solid ${props.strain.severity === "high" ? colors.serious : colors.warning}`,
+                borderRadius: 12,
+                padding: 24,
+                marginBottom: 16,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: colors.inkMuted,
+                  margin: "0 0 6px",
+                  textTransform: "uppercase",
+                }}
+              >
+                Fatigue check
+              </Text>
+              <Heading as="h2" style={{ fontSize: 16, fontWeight: 700, color: colors.inkPrimary, margin: "0 0 8px", lineHeight: "1.3" }}>
+                {props.strain.headline}
+              </Heading>
+              <Text style={{ fontSize: 13, color: colors.inkSecondary, margin: "0 0 10px", lineHeight: "1.5" }}>
+                {props.strain.body}
+              </Text>
+              {props.strain.firedSignals.map((s) => (
+                <Text key={s.label} style={{ fontSize: 13, color: colors.inkSecondary, margin: "0 0 6px", lineHeight: "1.5" }}>
+                  <span style={{ fontWeight: 600, color: colors.inkPrimary }}>{s.label}:</span> {s.detail}
+                </Text>
+              ))}
+            </Section>
+          )}
 
           <Section
             style={{
@@ -261,6 +347,70 @@ export function WeeklyDebrief(props: WeeklyDebriefProps) {
                   alt="CTL/ATL/TSB trend"
                   style={{ marginTop: 12, borderRadius: 8 }}
                 />
+              )}
+            </Section>
+          )}
+
+          {props.fitness && (
+            <Section
+              style={{
+                backgroundColor: colors.surface,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 12,
+                padding: 24,
+                marginBottom: 16,
+              }}
+            >
+              <Heading as="h2" style={{ fontSize: 14, fontWeight: 700, color: colors.inkPrimary, margin: "0 0 12px" }}>
+                Estimated fitness
+              </Heading>
+
+              <Row style={{ marginBottom: 12 }}>
+                <Column>
+                  <Text style={{ fontSize: 11, color: colors.inkMuted, margin: 0 }}>VDOT</Text>
+                  <Text style={{ fontSize: 24, color: colors.inkPrimary, margin: "2px 0 0", fontWeight: 700 }}>
+                    {props.fitness.vdot.toFixed(1)}
+                  </Text>
+                  {props.fitness.change && (
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        margin: 0,
+                        fontWeight: 600,
+                        color: fitnessChangeColor(props.fitness.change.delta),
+                      }}
+                    >
+                      {props.fitness.change.delta >= 0 ? "+" : ""}
+                      {props.fitness.change.delta.toFixed(1)} since {props.fitness.change.previousDate}
+                    </Text>
+                  )}
+                </Column>
+                {props.fitness.thresholdPaceLabel && (
+                  <Column>
+                    <Text style={{ fontSize: 11, color: colors.inkMuted, margin: 0 }}>Threshold pace</Text>
+                    <Text style={{ fontSize: 18, color: colors.inkPrimary, margin: "2px 0 0", fontWeight: 600 }}>
+                      {props.fitness.thresholdPaceLabel}
+                    </Text>
+                  </Column>
+                )}
+                {props.fitness.criticalSpeedPaceLabel && (
+                  <Column>
+                    <Text style={{ fontSize: 11, color: colors.inkMuted, margin: 0 }}>Critical Speed</Text>
+                    <Text style={{ fontSize: 18, color: colors.inkPrimary, margin: "2px 0 0", fontWeight: 600 }}>
+                      {props.fitness.criticalSpeedPaceLabel}
+                    </Text>
+                  </Column>
+                )}
+              </Row>
+
+              <Text style={{ fontSize: 13, color: colors.inkSecondary, margin: "0 0 4px", lineHeight: "1.5" }}>
+                {fitnessSentence(props.fitness)}
+              </Text>
+              {props.fitness.zonesUpdated && (
+                <Text style={{ fontSize: 12, color: colors.inkMuted, margin: "4px 0 0", lineHeight: "1.5" }}>
+                  Your training paces have been updated to match. The new threshold pace applies to runs from here on —
+                  past sessions keep the numbers they were scored against.
+                </Text>
               )}
             </Section>
           )}

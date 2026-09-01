@@ -25,6 +25,25 @@ export function formatPace(secPerKm: number | null | undefined): string {
   return `${m}:${String(s).padStart(2, "0")}/km`;
 }
 
+/** secPerKm -> "5:03" — the same clock as formatPace without the unit, for ranges
+ * and axis ticks where repeating "/km" on both ends just adds noise. */
+export function formatPaceClock(secPerKm: number | null | undefined): string {
+  if (secPerKm == null || !Number.isFinite(secPerKm)) return "—";
+  const total = Math.round(secPerKm);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/** Seconds -> "2 min" / "20 min" / "1 h" — labels for the best-effort durations. */
+export function formatEffortDuration(seconds: number): string {
+  if (seconds >= 3600) {
+    const hours = seconds / 3600;
+    return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} h`;
+  }
+  return `${Math.round(seconds / 60)} min`;
+}
+
 export function formatTempC(tempC: number | null | undefined): string {
   if (tempC == null) return "—";
   return `${Math.round(tempC)}°C`;

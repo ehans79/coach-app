@@ -269,7 +269,92 @@ export const athleteConstants = pgTable("athlete_constants", {
   thresholdHr: integer("threshold_hr").notNull(),
   thresholdPaceSecPerKm: integer("threshold_pace_sec_per_km").notNull(),
   vdot: real("vdot"),
+  // The qualifying effort this row's VDOT/threshold pace were derived from (see
+  // qualifying_efforts) — null on the seed row and any hand-entered row. Doubles as
+  // the idempotency key for the Stage-2 reconciliation: if the best qualifying effort
+  // in the current window is already this activity, there is nothing new to apply.
+  vdotSourceActivityId: bigint("vdot_source_activity_id", { mode: "number" }),
   isProvisional: boolean("is_provisional").notNull().default(false),
+  isCurrent: boolean("is_current").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
+// Qualifying efforts — runs that look like a genuine near-maximal time trial and
+// so can carry a Daniels-Gilbert VDOT estimate (src/lib/metrics/qualifyingEfforts.ts).
+// Either a Strava-tagged race (workout_type=1) or a heuristic match on sustained
+// near-threshold HR + even graded pace + no interval lap structure. Detected per
+// activity in the metrics pipeline; the "which one is the athlete's CURRENT VDOT"
+// question is answered on read (best in a trailing window), not stored here, so a
+// newly-backfilled older race can't retroactively look like the active estimate.
+// ---------------------------------------------------------------------------
+export const qualifyingEffortSourceEnum = pgEnum("qualifying_effort_source", [
+  "strava_race",
+  "time_trial_heuristic",
+]);
+
+export const qualifyingEfforts = pgTable("qualifying_efforts", {
+  activityId: bigint("activity_id", { mode: "number" })
+    .primaryKey()
+    .references(() => activities.id, { onDelete: "cascade" }),
+  source: qualifyingEffortSourceEnum("source").notNull(),
+  effortDate: date("effort_date").notNull(), // athlete-local date, for the trend chart's x-axis
+  distanceMeters: real("distance_meters").notNull(), // as actually run
+  // Minetti grade-adjusted flat-equivalent distance over the same duration. VDOT is
+  // computed from THIS, not raw distance, so the derived threshold pace stays on the
+  // same flat-referenced footing as NGP/rTSS (which are grade-adjusted throughout).
+  // On flat courses the two are within a rounding error of each other.
+  gradedDistanceMeters: real("graded_distance_meters").notNull(),
+  durationSeconds: integer("duration_seconds").notNull(),
+  vdot: real("vdot").notNull(),
+  avgGradePercent: real("avg_grade_percent"),
+  avgHrPercentOfMax: real("avg_hr_percent_of_max"),
+  gradedPaceCvPercent: real("graded_pace_cv_percent"),
+  detectionNotes: jsonb("detection_notes"), // string[] — why this effort qualified
+  computedAt: timestamp("computed_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
+// Best efforts — the mean-maximal pace curve (intervals.icu / GoldenCheetah style):
+// for each standard duration, the fastest sustained speed ever achieved over a
+// window of at least that long, across ALL runs rather than races only. One row per
+// duration holding the all-time best, updated incrementally as each activity is
+// metricated (src/lib/metrics/bestEfforts.ts) — cheap, since it reuses the streams
+// the pipeline already fetched. A full rescan (rebuildBestEfforts) repairs the table
+// after a backfill or an activity deletion.
+// ---------------------------------------------------------------------------
+export const bestEfforts = pgTable("best_efforts", {
+  durationSeconds: integer("duration_seconds").primaryKey(),
+  // Grade-adjusted — this is what the Critical Speed fit consumes, so that a hilly
+  // course doesn't understate the athlete's actual sustainable speed.
+  gradedSpeedMps: real("graded_speed_mps").notNull(),
+  // Raw speed over the SAME window, kept only so the chart can also show the pace
+  // actually run rather than only a flat-equivalent one the athlete never saw.
+  actualSpeedMps: real("actual_speed_mps"),
+  activityId: bigint("activity_id", { mode: "number" })
+    .notNull()
+    .references(() => activities.id, { onDelete: "cascade" }),
+  achievedOn: date("achieved_on").notNull(),
+  computedAt: timestamp("computed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
+// Critical Speed fits — versioned two-parameter hyperbolic fits (distance = CS·t + D′,
+// Monod & Scherrer 1965 / Jones & Vanhatalo 2017) over the best_efforts curve. Refit on
+// the weekly regeneration run rather than on every sync, since a single new activity
+// rarely moves the curve and the fit is only meaningful once several durations have
+// filled in. Versioned like zone_versions/athlete_constants so the fit history is
+// inspectable rather than overwritten.
+// ---------------------------------------------------------------------------
+export const criticalSpeedFits = pgTable("critical_speed_fits", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  asOfDate: date("as_of_date").notNull(),
+  criticalSpeedMps: real("critical_speed_mps").notNull(),
+  dPrimeMeters: real("d_prime_meters").notNull(),
+  rSquared: real("r_squared"),
+  pointCount: integer("point_count").notNull(),
+  pointsUsed: jsonb("points_used"), // [{ durationSeconds, gradedSpeedMps, activityId, achievedOn }]
   isCurrent: boolean("is_current").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
