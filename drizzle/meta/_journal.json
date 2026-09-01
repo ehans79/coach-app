@@ -8,6 +8,27 @@
       "when": 1788080932880,
       "tag": "0000_next_spacker_dave",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788167984772,
+      "tag": "0001_tranquil_electro",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788173691139,
+      "tag": "0002_careful_quasar",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788173953399,
+      "tag": "0003_grey_moondragon",
+      "breakpoints": true
     }
   ]
 }
