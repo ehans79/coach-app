@@ -1,4 +1,9 @@
-import { getWeeklyVolumeTrend, getZoneAdherenceTrend } from "@/lib/dashboard/queries";
+import {
+  getWeeklyVolumeTrend,
+  getZoneAdherenceTrend,
+  getDailyLoadTrend,
+  getWeeklyIntensityDistribution,
+} from "@/lib/dashboard/queries";
 
 export const dynamic = "force-dynamic";
 import { Card } from "@/components/Card";
@@ -6,9 +11,17 @@ import { EmptyState } from "@/components/EmptyState";
 import { TrainingLoadPanel } from "@/components/charts/TrainingLoadPanel";
 import { LongRunChart } from "@/components/charts/LongRunChart";
 import { ZoneTrendChart } from "@/components/charts/ZoneTrendChart";
+import { CtlAtlTsbChart } from "@/components/charts/CtlAtlTsbChart";
+import { AcwrTrendChart } from "@/components/charts/AcwrTrendChart";
+import { IntensityDistributionChart } from "@/components/charts/IntensityDistributionChart";
 
 export default async function TrendsPage() {
-  const [volumeTrend, zoneTrend] = await Promise.all([getWeeklyVolumeTrend(), getZoneAdherenceTrend()]);
+  const [volumeTrend, zoneTrend, dailyLoadTrend, intensityDistribution] = await Promise.all([
+    getWeeklyVolumeTrend(),
+    getZoneAdherenceTrend(),
+    getDailyLoadTrend(),
+    getWeeklyIntensityDistribution(),
+  ]);
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -20,6 +33,16 @@ export default async function TrendsPage() {
         </Card>
       ) : (
         <TrainingLoadPanel data={volumeTrend} />
+      )}
+
+      {dailyLoadTrend.length === 0 ? (
+        <Card className="mt-4">
+          <EmptyState message="No training-load history yet." />
+        </Card>
+      ) : (
+        <div className="mt-4">
+          <CtlAtlTsbChart data={dailyLoadTrend} />
+        </div>
       )}
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -41,6 +64,22 @@ export default async function TrendsPage() {
             <ZoneTrendChart data={zoneTrend} />
           )}
         </Card>
+
+        {dailyLoadTrend.length === 0 ? (
+          <Card>
+            <EmptyState message="No ACWR data yet." />
+          </Card>
+        ) : (
+          <AcwrTrendChart data={dailyLoadTrend} />
+        )}
+
+        {intensityDistribution.length === 0 ? (
+          <Card>
+            <EmptyState message="No intensity-distribution data yet." />
+          </Card>
+        ) : (
+          <IntensityDistributionChart data={intensityDistribution} />
+        )}
       </div>
     </div>
   );

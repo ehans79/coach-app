@@ -5,8 +5,9 @@ import {
   listAllActivitiesSince,
   getActivityDetail,
   getActivityStreams,
+  DEFAULT_STREAM_KEYS,
 } from "@/lib/strava/client";
-import type { StravaSummaryActivity, StravaDetailedActivity } from "@/lib/strava/types";
+import type { StravaSummaryActivity, StravaDetailedActivity, StravaStreamSet, StravaStreamType } from "@/lib/strava/types";
 
 const SYNC_ID = "strava";
 const DEFAULT_LOOKBACK_DAYS = 14;
@@ -32,6 +33,7 @@ function toActivityRow(activity: StravaSummaryActivity | StravaDetailedActivity)
     maxHeartrate: activity.max_heartrate ?? null,
     averageCadence: activity.average_cadence ?? null,
     sufferScore: activity.suffer_score ?? null,
+    workoutType: activity.workout_type ?? null,
     startLat: lat,
     startLng: lng,
     rawSummary: activity,
@@ -62,16 +64,24 @@ export async function syncSingleActivityDetail(
   return detail;
 }
 
-/** Returns cached streams for an activity, fetching + caching them from Strava if absent. */
-export async function getOrFetchStreams(activityId: number) {
+/**
+ * Returns cached streams for an activity, fetching + caching them from Strava if
+ * absent OR if the cached payload is missing any of the requested keys (e.g. an
+ * activity synced before grade_smooth/altitude/moving were added to the default
+ * key set) — without this check, older cached rows would silently stay missing
+ * those keys forever, and metrics reading them would incorrectly conclude the
+ * stream was never available for that activity rather than just never fetched.
+ */
+export async function getOrFetchStreams(activityId: number, keys: StravaStreamType[] = DEFAULT_STREAM_KEYS) {
   const [existing] = await db
     .select()
     .from(activityStreams)
     .where(eq(activityStreams.activityId, activityId))
     .limit(1);
-  if (existing) return existing.streams;
+  const cached = existing?.streams as StravaStreamSet | undefined;
+  if (cached && keys.every((k) => k in cached)) return cached;
 
-  const streams = await getActivityStreams(activityId);
+  const streams = await getActivityStreams(activityId, keys);
   await db
     .insert(activityStreams)
     .values({ activityId, streams })

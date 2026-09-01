@@ -35,6 +35,19 @@ export interface WeeklyDebriefNextSession {
   primaryZone: string | null;
 }
 
+export type AcwrBand = "low" | "sweet_spot" | "elevated" | "danger" | null;
+
+export interface WeeklyDebriefLoadContext {
+  ctl: number;
+  atl: number;
+  tsb: number;
+  ctlRampPerWeek: number;
+  acwr: number | null;
+  acwrBand: AcwrBand;
+  intensityDistribution: { lowPercent: number; moderatePercent: number; highPercent: number };
+  loadChartUrl: string | null;
+}
+
 export interface WeeklyDebriefProps {
   weekRangeLabel: string;
   weekVerdict: string;
@@ -48,10 +61,26 @@ export interface WeeklyDebriefProps {
   nextWeekSessions: WeeklyDebriefNextSession[];
   rationale: string;
   dashboardUrl: string;
+  loadContext: WeeklyDebriefLoadContext | null;
 }
 
 function flagColor(flag: "watch" | "correct"): string {
   return flag === "correct" ? colors.serious : colors.warning;
+}
+
+function acwrBandLabel(band: AcwrBand): string | null {
+  if (band === "low") return "Low";
+  if (band === "sweet_spot") return "Sweet spot";
+  if (band === "elevated") return "Elevated";
+  if (band === "danger") return "High";
+  return null;
+}
+
+function acwrBandColor(band: AcwrBand): string {
+  if (band === "sweet_spot") return colors.good;
+  if (band === "danger") return colors.serious;
+  if (band === "elevated") return colors.warning;
+  return colors.inkMuted;
 }
 
 export function WeeklyDebrief(props: WeeklyDebriefProps) {
@@ -160,6 +189,81 @@ export function WeeklyDebrief(props: WeeklyDebriefProps) {
               </>
             )}
           </Section>
+
+          {props.loadContext && (
+            <Section
+              style={{
+                backgroundColor: colors.surface,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 12,
+                padding: 24,
+                marginBottom: 16,
+              }}
+            >
+              <Heading as="h2" style={{ fontSize: 14, fontWeight: 700, color: colors.inkPrimary, margin: "0 0 12px" }}>
+                Training load
+              </Heading>
+
+              <Row style={{ marginBottom: 12 }}>
+                <Column>
+                  <Text style={{ fontSize: 11, color: colors.inkMuted, margin: 0 }}>Fitness (CTL)</Text>
+                  <Text style={{ fontSize: 18, color: colors.inkPrimary, margin: "2px 0 0", fontWeight: 600 }}>
+                    {props.loadContext.ctl.toFixed(0)}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: colors.inkMuted, margin: 0 }}>
+                    {props.loadContext.ctlRampPerWeek >= 0 ? "+" : ""}
+                    {props.loadContext.ctlRampPerWeek.toFixed(1)}/wk
+                  </Text>
+                </Column>
+                <Column>
+                  <Text style={{ fontSize: 11, color: colors.inkMuted, margin: 0 }}>Fatigue (ATL)</Text>
+                  <Text style={{ fontSize: 18, color: colors.inkPrimary, margin: "2px 0 0", fontWeight: 600 }}>
+                    {props.loadContext.atl.toFixed(0)}
+                  </Text>
+                </Column>
+                <Column>
+                  <Text style={{ fontSize: 11, color: colors.inkMuted, margin: 0 }}>Form (TSB)</Text>
+                  <Text style={{ fontSize: 18, color: colors.inkPrimary, margin: "2px 0 0", fontWeight: 600 }}>
+                    {props.loadContext.tsb >= 0 ? "+" : ""}
+                    {props.loadContext.tsb.toFixed(0)}
+                  </Text>
+                </Column>
+                {props.loadContext.acwr != null && (
+                  <Column>
+                    <Text style={{ fontSize: 11, color: colors.inkMuted, margin: 0 }}>ACWR</Text>
+                    <Text
+                      style={{
+                        fontSize: 18,
+                        margin: "2px 0 0",
+                        fontWeight: 600,
+                        color: acwrBandColor(props.loadContext.acwrBand),
+                      }}
+                    >
+                      {props.loadContext.acwr.toFixed(2)}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: acwrBandColor(props.loadContext.acwrBand), margin: 0 }}>
+                      {acwrBandLabel(props.loadContext.acwrBand)}
+                    </Text>
+                  </Column>
+                )}
+              </Row>
+
+              <Text style={{ fontSize: 13, color: colors.inkSecondary, margin: "0 0 4px" }}>
+                This week: {props.loadContext.intensityDistribution.lowPercent.toFixed(0)}% low ·{" "}
+                {props.loadContext.intensityDistribution.moderatePercent.toFixed(0)}% moderate ·{" "}
+                {props.loadContext.intensityDistribution.highPercent.toFixed(0)}% high (80/20 target: ~80% low)
+              </Text>
+
+              {props.loadContext.loadChartUrl && (
+                <Img
+                  src={props.loadContext.loadChartUrl}
+                  width="100%"
+                  alt="CTL/ATL/TSB trend"
+                  style={{ marginTop: 12, borderRadius: 8 }}
+                />
+              )}
+            </Section>
+          )}
 
           <Section
             style={{

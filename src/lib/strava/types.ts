@@ -53,6 +53,9 @@ export interface StravaSummaryActivity {
   average_cadence?: number;
   suffer_score?: number;
   start_latlng?: [number, number] | [];
+  // null/0=default, 1=Race, 2=Long Run, 3=Workout — used by the run-type classifier
+  // (src/lib/metrics/classify.ts) as a strong prior for race/long-run detection.
+  workout_type?: number;
 }
 
 export interface StravaDetailedActivity extends StravaSummaryActivity {
@@ -85,6 +88,19 @@ export type StravaStreamSet = Partial<
     }
   >
 >;
+
+export interface StravaLap {
+  id: number;
+  lap_index: number;
+  name: string;
+  elapsed_time: number; // seconds
+  moving_time: number; // seconds
+  distance: number; // meters
+  average_speed: number; // m/s
+  max_speed: number; // m/s
+  average_heartrate?: number;
+  max_heartrate?: number;
+}
 
 export interface StravaPushSubscription {
   id: number;

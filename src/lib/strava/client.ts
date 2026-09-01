@@ -7,6 +7,7 @@ import type {
   StravaDetailedActivity,
   StravaStreamSet,
   StravaStreamType,
+  StravaLap,
   StravaPushSubscription,
 } from "./types";
 
@@ -77,7 +78,7 @@ export async function getActivityDetail(id: number): Promise<StravaDetailedActiv
   return stravaGet<StravaDetailedActivity>(`/activities/${id}`);
 }
 
-const DEFAULT_STREAM_KEYS: StravaStreamType[] = [
+export const DEFAULT_STREAM_KEYS: StravaStreamType[] = [
   "time",
   "distance",
   "heartrate",
@@ -85,6 +86,12 @@ const DEFAULT_STREAM_KEYS: StravaStreamType[] = [
   "velocity_smooth",
   "latlng",
   "temp",
+  // grade_smooth/altitude/moving power the metrics engine's GAP/NGP (src/lib/metrics/) —
+  // grade_smooth is Strava's own pre-smoothed per-point grade, used directly rather than
+  // re-deriving grade from raw altitude (which is noisy) ourselves.
+  "grade_smooth",
+  "altitude",
+  "moving",
 ];
 
 export async function getActivityStreams(
@@ -95,6 +102,10 @@ export async function getActivityStreams(
     keys: keys.join(","),
     key_by_type: true,
   });
+}
+
+export async function getActivityLaps(id: number): Promise<StravaLap[]> {
+  return stravaGet<StravaLap[]>(`/activities/${id}/laps`);
 }
 
 export async function createPushSubscription(callbackUrl: string): Promise<{ id: number }> {

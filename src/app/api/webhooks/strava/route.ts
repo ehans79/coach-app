@@ -6,6 +6,7 @@ import { activities } from "@/lib/db/schema";
 import { syncSingleActivityDetail } from "@/lib/sync/activities";
 import { generateCommentaryForActivity } from "@/lib/coaching/commentary";
 import { matchAndMarkCompletion } from "@/lib/coaching/matching";
+import { computeMetricsForActivity } from "@/lib/metrics/pipeline";
 
 interface StravaWebhookEvent {
   aspect_type: "create" | "update" | "delete";
@@ -53,6 +54,7 @@ export async function POST(request: NextRequest) {
         try {
           await syncSingleActivityDetail(event.object_id);
           await matchAndMarkCompletion(event.object_id);
+          await computeMetricsForActivity(event.object_id);
           await generateCommentaryForActivity(event.object_id);
         } catch (err) {
           console.error(`Failed to process Strava webhook event for activity ${event.object_id}`, err);

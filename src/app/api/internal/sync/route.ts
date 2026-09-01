@@ -3,6 +3,8 @@ import { getEnv } from "@/lib/env";
 import { syncRecentActivities } from "@/lib/sync/activities";
 import { findUncommentedRunActivityIds, generateCommentaryForActivity } from "@/lib/coaching/commentary";
 import { findUnmatchedActivityIds, matchAndMarkCompletion } from "@/lib/coaching/matching";
+import { computeMetricsForActivity, findUnmetricatedRunActivityIds } from "@/lib/metrics/pipeline";
+import { computeDailyRollup } from "@/lib/metrics/rollup";
 
 /**
  * Fallback poll target — hit on an hourly Railway cron schedule (separate
@@ -29,6 +31,19 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const unmetricated = await findUnmetricatedRunActivityIds();
+  let metricsComputed = 0;
+  for (const activityId of unmetricated) {
+    try {
+      await computeMetricsForActivity(activityId);
+      metricsComputed += 1;
+    } catch (err) {
+      console.error(`Failed to compute metrics for activity ${activityId}`, err);
+    }
+  }
+
+  const rollup = await computeDailyRollup();
+
   const uncommented = await findUncommentedRunActivityIds();
   let commentsGenerated = 0;
   for (const activityId of uncommented) {
@@ -40,5 +55,5 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ...syncResult, matched: unmatched.length, commentsGenerated });
+  return NextResponse.json({ ...syncResult, matched: unmatched.length, metricsComputed, rollup, commentsGenerated });
 }

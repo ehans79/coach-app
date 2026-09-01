@@ -6,7 +6,10 @@ export interface StreamData {
   heartrate?: number[];
   cadence?: number[]; // Strava reports single-leg cadence (~75-95 typical) — fine here since
   // every use compares an activity to the athlete's own recent average, never an absolute target.
-  velocitySmooth?: number[];
+  velocitySmooth?: number[]; // m/s
+  gradeSmoothPercent?: number[]; // Strava's own pre-smoothed grade, e.g. 5.2 = +5.2%
+  altitude?: number[]; // meters — display/debugging only, GAP uses gradeSmoothPercent directly
+  moving?: boolean[];
 }
 
 export function extractStreamArrays(raw: StravaStreamSet): StreamData {
@@ -16,6 +19,9 @@ export function extractStreamArrays(raw: StravaStreamSet): StreamData {
     heartrate: raw.heartrate?.data as number[] | undefined,
     cadence: raw.cadence?.data as number[] | undefined,
     velocitySmooth: raw.velocity_smooth?.data as number[] | undefined,
+    gradeSmoothPercent: raw.grade_smooth?.data as number[] | undefined,
+    altitude: raw.altitude?.data as number[] | undefined,
+    moving: raw.moving?.data as boolean[] | undefined,
   };
 }
 

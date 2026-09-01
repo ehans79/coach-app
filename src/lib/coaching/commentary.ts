@@ -1,28 +1,35 @@
-import { and, eq, gte, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lte } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { activities, activityComments } from "@/lib/db/schema";
+import { activities, activityComments, activityMetrics, activityMetricReps, dailyLoad } from "@/lib/db/schema";
 import { getOrFetchStreams } from "@/lib/sync/activities";
 import type { StravaStreamSet } from "@/lib/strava/types";
 import { getCurrentHrZones, computeZoneTimeDistribution, assessZoneAdherence } from "./zones";
 import { extractStreamArrays, computeCadenceFade, computePaceFade } from "./streams";
 import { getRollingAverageCadence } from "./history";
-import { findMatchingPlanWorkout } from "./matching";
+import { findMatchingPlanWorkout, localDateOf } from "./matching";
 import { getWeatherAtActivityStart, type WeatherSnapshot } from "@/lib/weather/openMeteo";
 import { generateText } from "@/lib/llm/anthropic";
 import { formatKm, formatDuration, formatPace, formatTempC } from "@/lib/format";
 import type { ZoneAdherenceAssessment } from "./zones";
 import type { CadenceFade, PaceFade } from "./streams";
+import type { RunType, RunTypeSource } from "@/lib/metrics/classify";
 
 type Flag = "none" | "watch" | "correct";
 
 function determineFlag(
   zoneAssessment: ZoneAdherenceAssessment,
   cadenceDelta: number | null,
-  cadenceFade: CadenceFade | null
+  cadenceFade: CadenceFade | null,
+  decouplingPercent: number | null,
+  acwr: number | null
 ): Flag {
   if (zoneAssessment.adherence === "drifted") {
     return zoneAssessment.percentAboveTarget > 40 ? "correct" : "watch";
   }
+  // Deterministic, not LLM-decided — same pattern as the zone-drift check above.
+  // Documented thresholds from the sports-science reference doc, not arbitrary.
+  if (decouplingPercent != null && decouplingPercent > 10) return "watch";
+  if (acwr != null && acwr > 1.5) return "watch";
   if (cadenceDelta != null && cadenceDelta < -5) return "watch";
   if (cadenceFade != null && cadenceFade.fadePercent < -5) return "watch";
   return "none";
@@ -38,7 +45,25 @@ You'll be given structured facts about the run — vs. what was prescribed (if a
 - If flag is "watch": note what to keep an eye on, without being alarmist.
 - If flag is "none": a quick affirmation is enough — don't manufacture a critique.
 
-If the weather explains an elevated heart rate (hot/humid), say so before judging the effort as too hard — e.g. "it was 29°C out, some of that elevated HR is heat, not pace." If there was no matched plan prescription (an unplanned/extra activity), just comment on how the session looked on its own.`;
+If the weather explains an elevated heart rate (hot/humid), say so before judging the effort as too hard — e.g. "it was 29°C out, some of that elevated HR is heat, not pace." If there was no matched plan prescription (an unplanned/extra activity), just comment on how the session looked on its own.
+
+Alongside those facts, you'll also get a deterministically-computed metrics block (facts.runType, facts.load, facts.aerobicDurability, facts.intervalReps, facts.weeklyLoad) — Grade-Adjusted Pace, Normalized Graded Pace, TRIMP, rTSS/hrTSS, Efficiency Factor, aerobic decoupling, and weekly CTL/ATL/TSB/ACWR context, computed via standard sports-science formulas (Minetti grade-adjusted pace, Banister TRIMP, Coggan-style TSS). State the actual numbers when they matter to the story of this run (e.g. "3.2% decoupling" rather than "your aerobic fitness looked solid") — translate them into coach language rather than reciting the facts blob, and never invent a number that isn't in the facts.
+
+Documented thresholds — only flag something as a problem when it actually crosses these, don't manufacture concern from a number sitting comfortably inside the normal range:
+- Aerobic decoupling: <5% is good aerobic durability, 5-10% is unremarkable, >10% is worth flagging (fatigue, heat, dehydration, or under-conditioning — not necessarily a training failure).
+- ACWR (acute:chronic workload ratio): 0.8-1.3 is the "sweet spot," >1.5 is worth a mention as elevated.
+
+CTL/ATL/TSB/ACWR/decoupling are models built from Edu's own training data, not lab-measured facts — talk about them the way a coach reads a training log, never as a diagnostic printout ("your ACWR is 1.6" is not how a coach talks; "you've ramped up faster than usual the last week or two" is).
+
+Apply ONLY the guidance below matching facts.runType.value — the others aren't relevant to this run:
+- easy / recovery: check whether the run actually stayed easy (time in the low HR zone vs. the prescribed zone — Seiler's "was your easy run actually easy?"), note the EF/decoupling read if facts.aerobicDurability is present (decoupling should be minimal on an easy run — flag if not), mention cadence vs. baseline.
+- tempo: was the effort actually in the threshold band (facts.load.intensityFactor near 1.0, roughly 0.95-1.05)? Note decoupling across the effort if present — that's the durability read on a tempo block, not just the pace.
+- interval: this is about per-rep execution, not aerobic durability — walk through facts.intervalReps: pace/GAP consistency across reps, the fade % from first to last rep, whether HR recovered between reps. Don't discuss EF or decoupling here (facts.aerobicDurability will be null) — it's not meaningful on a rep-structured session.
+- long: decoupling over the whole run is the durability read (>5% late in a long run points to an endurance ceiling, fueling, or heat — information, not a training failure); note any late-run pace/GAP fade alongside it.
+- race: talk about pacing evenness (splits/fade) and how much of the effort held up — a performance read, not a training-load one.
+- recovery: the main question is whether it actually stayed easy — flag it if the HR or pace looked too hard given how depleted facts.weeklyLoad.tsb (if present and negative) suggests he should be.
+
+Weave the weekly-load context in naturally when it's relevant to the story — the run itself is still the headline, not the training-load numbers.`;
 
 export interface CommentaryFacts {
   activity: {
@@ -78,6 +103,81 @@ export interface CommentaryFacts {
     tempC: string;
     conditions: string;
   } | null;
+
+  runType: { value: RunType; source: RunTypeSource };
+
+  load: {
+    primaryTss: number | null;
+    tssSource: "r_tss" | "hr_tss" | "none";
+    trimp: number | null;
+    intensityFactor: number | null;
+    ngpPace: string | null;
+  };
+
+  /** Null entirely for interval/race runs (and whenever the run wasn't steady
+   * enough to compute) — decoupling/EF are only meaningful on a steady effort. */
+  aerobicDurability: {
+    isSteady: boolean;
+    efficiencyFactor: number | null;
+    decouplingPercent: number | null;
+  } | null;
+
+  /** Only populated when runType is "interval". */
+  intervalReps:
+    | {
+        repIndex: number;
+        kind: "work" | "recovery";
+        distanceKm: string;
+        gapPace: string | null;
+        avgHr: number | null;
+        fadePercent: number | null;
+      }[]
+    | null;
+
+  weeklyLoad: {
+    ctl: number;
+    atl: number;
+    tsb: number;
+    acwr: number | null;
+    ctlRampPerWeek: number;
+  } | null;
+}
+
+export interface WeeklyLoadContext {
+  ctl: number;
+  atl: number;
+  tsb: number;
+  acwr: number | null;
+  ctlRampPerWeek: number;
+}
+
+/** Today's daily_load row plus the ramp vs. 7 days prior — read layer for both commentary and the weekly email. */
+export async function getWeeklyLoadContext(dateStr: string): Promise<WeeklyLoadContext | null> {
+  const [today] = await db
+    .select()
+    .from(dailyLoad)
+    .where(lte(dailyLoad.date, dateStr))
+    .orderBy(desc(dailyLoad.date))
+    .limit(1);
+  if (!today) return null;
+
+  const weekAgoDate = new Date(`${today.date}T00:00:00Z`);
+  weekAgoDate.setUTCDate(weekAgoDate.getUTCDate() - 7);
+  const weekAgoDateStr = weekAgoDate.toISOString().slice(0, 10);
+  const [weekAgo] = await db
+    .select({ ctl: dailyLoad.ctl })
+    .from(dailyLoad)
+    .where(lte(dailyLoad.date, weekAgoDateStr))
+    .orderBy(desc(dailyLoad.date))
+    .limit(1);
+
+  return {
+    ctl: today.ctl,
+    atl: today.atl,
+    tsb: today.tsb,
+    acwr: today.acwr,
+    ctlRampPerWeek: today.ctl - (weekAgo?.ctl ?? 0),
+  };
 }
 
 function buildFacts(
@@ -87,7 +187,10 @@ function buildFacts(
   rollingCadence: number | null,
   cadenceFade: CadenceFade | null,
   paceFade: PaceFade | null,
-  weather: WeatherSnapshot | null
+  weather: WeatherSnapshot | null,
+  metricsRow: typeof activityMetrics.$inferSelect | null,
+  repRows: (typeof activityMetricReps.$inferSelect)[],
+  weeklyLoad: WeeklyLoadContext | null
 ): CommentaryFacts {
   const avgPaceSecPerKm =
     activity.movingTimeSeconds && activity.distanceMeters
@@ -141,6 +244,36 @@ function buildFacts(
         }
       : null,
     weather: weather ? { tempC: formatTempC(weather.tempC), conditions: weather.conditions } : null,
+    runType: metricsRow
+      ? { value: metricsRow.runType, source: metricsRow.runTypeSource }
+      : { value: "easy", source: "heuristic" }, // metrics unavailable (shouldn't happen post-pipeline-wiring, but keep commentary generatable)
+    load: {
+      primaryTss: metricsRow?.primaryTss ?? null,
+      tssSource: metricsRow?.tssSource ?? "none",
+      trimp: metricsRow?.trimp ?? null,
+      intensityFactor: metricsRow?.intensityFactor ?? null,
+      ngpPace: metricsRow?.normalizedGradedPaceSecPerKm ? formatPace(metricsRow.normalizedGradedPaceSecPerKm) : null,
+    },
+    aerobicDurability:
+      metricsRow && metricsRow.isSteady
+        ? {
+            isSteady: metricsRow.isSteady,
+            efficiencyFactor: metricsRow.efficiencyFactor,
+            decouplingPercent: metricsRow.decouplingPercent,
+          }
+        : null,
+    intervalReps:
+      metricsRow?.runType === "interval" && repRows.length > 0
+        ? repRows.map((r) => ({
+            repIndex: r.repIndex,
+            kind: r.kind,
+            distanceKm: formatKm(r.distanceMeters),
+            gapPace: r.avgGapPaceSecPerKm != null ? formatPace(r.avgGapPaceSecPerKm) : null,
+            avgHr: r.avgHeartrate,
+            fadePercent: r.fadePercentVsFirstRep,
+          }))
+        : null,
+    weeklyLoad: weeklyLoad,
   };
 }
 
@@ -183,13 +316,42 @@ export async function generateCommentaryForActivity(activityId: number): Promise
     }
   }
 
-  const flag = determineFlag(zoneAssessment, cadenceDelta, cadenceFade);
-  const facts = buildFacts(activity, matchedWorkout, zoneAssessment, rollingCadence, cadenceFade, paceFade, weather);
+  // Populated by computeMetricsForActivity, which the pipeline runs before this
+  // function at every call site — absent only if that step failed or was skipped.
+  const [metricsRow] = await db.select().from(activityMetrics).where(eq(activityMetrics.activityId, activityId)).limit(1);
+  const repRows =
+    metricsRow?.runType === "interval"
+      ? await db.select().from(activityMetricReps).where(eq(activityMetricReps.activityId, activityId))
+      : [];
+  const weeklyLoad = await getWeeklyLoadContext(localDateOf(activity.startDateLocal));
+
+  const flag = determineFlag(
+    zoneAssessment,
+    cadenceDelta,
+    cadenceFade,
+    metricsRow?.decouplingPercent ?? null,
+    weeklyLoad?.acwr ?? null
+  );
+  const facts = buildFacts(
+    activity,
+    matchedWorkout,
+    zoneAssessment,
+    rollingCadence,
+    cadenceFade,
+    paceFade,
+    weather,
+    metricsRow ?? null,
+    repRows,
+    weeklyLoad
+  );
 
   const commentText = await generateText({
     system: COMMENTARY_SYSTEM_PROMPT,
     prompt: `Verdict already computed: zone_adherence=${zoneAssessment.adherence}, flag=${flag}\n\nFacts (JSON):\n${JSON.stringify(facts, null, 2)}\n\nWrite the coach's comment now.`,
-    maxTokens: 512,
+    // Bumped from 512 — with the sports-science metrics now in the facts blob,
+    // a still-concise "2-4 sentence" response legitimately needs more headroom
+    // than before (512 was cutting real responses off mid-sentence).
+    maxTokens: 768,
   });
 
   const row = {

@@ -4,6 +4,8 @@ config({ quiet: true }); // fall back to .env for anything not in .env.local
 import { syncRecentActivities } from "../src/lib/sync/activities";
 import { findUncommentedRunActivityIds, generateCommentaryForActivity } from "../src/lib/coaching/commentary";
 import { findUnmatchedActivityIds, matchAndMarkCompletion } from "../src/lib/coaching/matching";
+import { computeMetricsForActivity, findUnmetricatedRunActivityIds } from "../src/lib/metrics/pipeline";
+import { computeDailyRollup } from "../src/lib/metrics/rollup";
 import { regeneratePlanForNextWeek, PlanNotStartedYetError } from "../src/lib/coaching/regeneration";
 import { sendWeeklyDebrief } from "../src/lib/email/sendWeeklyDebrief";
 
@@ -27,6 +29,19 @@ async function main() {
       console.error(`Failed to match activity ${activityId} against the plan`, err);
     }
   }
+
+  const unmetricated = await findUnmetricatedRunActivityIds();
+  for (const activityId of unmetricated) {
+    try {
+      await computeMetricsForActivity(activityId);
+    } catch (err) {
+      console.error(`Failed to compute metrics for activity ${activityId}`, err);
+    }
+  }
+
+  console.log("Rolling up daily training load...");
+  const rollup = await computeDailyRollup();
+  console.log(`Rolled up ${rollup.daysComputed} days.`);
 
   const uncommented = await findUncommentedRunActivityIds();
   for (const activityId of uncommented) {

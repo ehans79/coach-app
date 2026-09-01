@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getActivityDetail } from "@/lib/dashboard/queries";
+import { getActivityDetail, getActivityHrGapSeries, getActivityReps } from "@/lib/dashboard/queries";
 
 export const dynamic = "force-dynamic";
 import { Card } from "@/components/Card";
 import { StatTile } from "@/components/StatTile";
 import { adherenceToBadge, flagToVerdict } from "@/components/Badge";
 import { HeroVerdict } from "@/components/HeroVerdict";
+import { HrGapDecouplingChart } from "@/components/charts/HrGapDecouplingChart";
+import { IntervalRepsChart } from "@/components/charts/IntervalRepsChart";
 import { formatKm, formatDuration, formatPace } from "@/lib/format";
 
 function formatDate(d: Date): string {
@@ -32,6 +34,10 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
       : null;
 
   const facts = activity.comment?.facts ?? null;
+  const [hrGapSeries, reps] = await Promise.all([
+    getActivityHrGapSeries(activityId),
+    activity.metrics?.runType === "interval" ? getActivityReps(activityId) : Promise.resolve([]),
+  ]);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -55,6 +61,18 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
           >
             {activity.comment.commentText}
           </HeroVerdict>
+        </div>
+      )}
+
+      {hrGapSeries && hrGapSeries.length > 0 && (
+        <div className="mb-6">
+          <HrGapDecouplingChart data={hrGapSeries} />
+        </div>
+      )}
+
+      {activity.metrics?.runType === "interval" && reps.length > 0 && (
+        <div className="mb-6">
+          <IntervalRepsChart reps={reps} />
         </div>
       )}
 
