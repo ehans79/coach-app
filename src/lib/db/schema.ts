@@ -146,6 +146,59 @@ export const planWorkouts = pgTable("plan_workouts", {
 });
 
 // ---------------------------------------------------------------------------
+// Garmin exercise names — reference table of exercise names exactly as they
+// appear in Garmin Connect's manual strength-workout exercise picker (see
+// scripts/import-garmin-exercises.ts and data/garmin-connect-exercises.json
+// for provenance — a community-compiled list pulled directly from that UI).
+// This is a naming-match aid, not an API integration: Edu hand-enters each
+// session into Garmin Connect himself, so the plan generator is constrained
+// to names from this table purely so what it suggests is typeable verbatim
+// into the picker, with no separate category/equipment/curation concept —
+// the full list is available to the generator as-is.
+// ---------------------------------------------------------------------------
+export const garminExercises = pgTable("garmin_exercises", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull().unique(), // exact Garmin Connect display string, e.g. "Goblet Squat"
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
+// Plan workout exercises — normalized rows for each exercise within a
+// generated strength session (one row per exercise per section), including
+// the rest scheme (rest between sets, rest between circuit rounds). Stores
+// the matched Garmin Connect exercise name directly on each row (denormalized
+// so history stays accurate even if the reference table changes later),
+// plus a nullable FK back to garmin_exercises for convenience.
+// ---------------------------------------------------------------------------
+export const strengthSectionEnum = pgEnum("strength_section", [
+  "warm_up",
+  "circuit",
+  "core_finisher",
+  "cool_down",
+]);
+
+export const planWorkoutExercises = pgTable("plan_workout_exercises", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  planWorkoutId: uuid("plan_workout_id")
+    .notNull()
+    .references(() => planWorkouts.id, { onDelete: "cascade" }),
+  section: strengthSectionEnum("section").notNull(),
+  orderIndex: integer("order_index").notNull(), // position within the section
+  garminExerciseId: uuid("garmin_exercise_id").references(() => garminExercises.id, { onDelete: "set null" }),
+  exerciseName: text("exercise_name").notNull(), // exact Garmin Connect display string, matches garmin_exercises.name
+  sets: integer("sets"),
+  reps: text("reps").notNull(), // "12-15" | "8 each side" | "45-60s" — count- or time-based
+  restBetweenSetsSeconds: integer("rest_between_sets_seconds"),
+  // Rounds/rest-between-rounds apply to the exercise's section as a whole
+  // (e.g. "2-3 rounds" for a circuit) — duplicated onto every exercise row
+  // in that section rather than modeled as a separate sections table, since
+  // this table is meant to read as "everything about one planned exercise."
+  rounds: text("rounds"), // e.g. "2-3", only meaningful for multi-round sections like Circuit
+  restBetweenRoundsSeconds: integer("rest_between_rounds_seconds"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
 // Activity comments — one per activity, the generated coach commentary.
 // ---------------------------------------------------------------------------
 export const zoneAdherenceEnum = pgEnum("zone_adherence", ["ok", "drifted", "na"]);
