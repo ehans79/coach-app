@@ -85,6 +85,9 @@ export interface WeeklyDebriefProps {
   nextWeekSessions: WeeklyDebriefNextSession[];
   rationale: string;
   dashboardUrl: string;
+  /** Absolute URL to the transparent logo mark — email clients can't resolve
+   * app-relative paths, so this is built from APP_BASE_URL by the sender. */
+  logoUrl: string;
   loadContext: WeeklyDebriefLoadContext | null;
   fitness: WeeklyDebriefFitness | null;
   strain: WeeklyDebriefStrain | null;
@@ -142,6 +145,20 @@ export function WeeklyDebrief(props: WeeklyDebriefProps) {
       <Preview>{props.weekVerdict}</Preview>
       <Body style={{ backgroundColor: colors.page, fontFamily: "Arial, Helvetica, sans-serif", margin: 0, padding: 0 }}>
         <Container style={{ maxWidth: 560, margin: "0 auto", padding: "24px 16px" }}>
+          {/* Letterhead: the mark alone, above the hero card. The 2x asset is
+              rendered at half size so it stays sharp on retina displays, and
+              carries alt text because nothing else here names the sender when
+              a client blocks images. */}
+          <Section style={{ marginBottom: 12 }}>
+            <Img
+              src={props.logoUrl}
+              width="33"
+              height="28"
+              alt="Coach"
+              style={{ display: "block", border: 0, outline: "none" }}
+            />
+          </Section>
+
           <Section
             style={{
               backgroundColor: colors.surface,

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -18,9 +19,21 @@ export function Nav() {
     <>
       {/* Desktop sidebar */}
       <nav className="hidden h-full w-56 shrink-0 flex-col border-r border-border bg-surface px-4 py-6 lg:flex">
-        <div className="mb-8 px-2">
-          <div className="text-sm font-semibold text-ink-primary">Coach</div>
-          <div className="text-xs text-ink-muted">Eduardo Hans</div>
+        <div className="mb-8 flex items-center gap-2.5 px-2">
+          {/* Decorative: the wordmark beside it already names the app, so an
+              alt here would just make screen readers say "Coach" twice. */}
+          <Image
+            src="/logo-mark-64.png"
+            alt=""
+            width={37}
+            height={32}
+            priority
+            className="h-8 w-auto shrink-0"
+          />
+          <div>
+            <div className="text-sm font-semibold text-ink-primary">Coach</div>
+            <div className="text-xs text-ink-muted">Eduardo Hans</div>
+          </div>
         </div>
         <ul className="flex flex-col gap-1">
           {NAV_ITEMS.map((item) => {

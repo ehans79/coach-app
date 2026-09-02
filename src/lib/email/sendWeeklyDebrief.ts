@@ -217,6 +217,7 @@ export async function renderWeeklyDebriefHtml(regen: RegenerationResult): Promis
       nextWeekSessions,
       rationale: regen.rationale,
       dashboardUrl: env.APP_BASE_URL,
+      logoUrl: `${env.APP_BASE_URL}/logo-mark-email.png`,
       loadContext,
       fitness,
       strain,
