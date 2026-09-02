@@ -71,6 +71,10 @@ export interface WeeklyDebriefStrain {
 export interface WeeklyDebriefProps {
   weekRangeLabel: string;
   weekVerdict: string;
+  /** The synthesized coach's read — the same stored text the Trends dashboard
+   * opens with. Null when this week's generation failed or hasn't run: the
+   * email drops the paragraph rather than substituting one of its own. */
+  coachsRead: string | null;
   sessionsPlanned: number;
   sessionsCompleted: number;
   totalDistanceLabel: string;
@@ -165,6 +169,11 @@ export function WeeklyDebrief(props: WeeklyDebriefProps) {
             <Heading style={{ fontSize: 26, fontWeight: 800, lineHeight: "1.2", letterSpacing: "-0.01em", color: colors.inkPrimary, margin: 0 }}>
               {props.weekVerdict}
             </Heading>
+            {props.coachsRead && (
+              <Text style={{ fontSize: 15, color: colors.inkSecondary, margin: "12px 0 0", lineHeight: "1.6" }}>
+                {props.coachsRead}
+              </Text>
+            )}
           </Section>
 
           {props.strain && (

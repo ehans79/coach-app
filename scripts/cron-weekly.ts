@@ -10,14 +10,16 @@ import { reconcileVdotIntoZones } from "../src/lib/metrics/qualifyingEfforts";
 import { refitCriticalSpeed } from "../src/lib/metrics/criticalSpeed";
 import { refitCriticalPower } from "../src/lib/metrics/criticalPower";
 import { regeneratePlanForNextWeek, PlanNotStartedYetError } from "../src/lib/coaching/regeneration";
+import { generateCoachsRead } from "../src/lib/coaching/coachsRead";
 import { sendWeeklyDebrief } from "../src/lib/email/sendWeeklyDebrief";
 
 /**
  * Entrypoint for the Railway `cron-weekly` service — runs Sunday evening.
  * Syncs first (fallback catch-up for anything a webhook missed this week),
  * generates commentary for anything still uncommented, regenerates the plan
- * for the coming week, then emails the debrief — chained here rather than a
- * separate schedule, per the brief.
+ * for the coming week, writes the coach's read over the week that just ended,
+ * then emails the debrief — chained here rather than a separate schedule, per
+ * the brief.
  */
 async function main() {
   console.log("Syncing recent activities...");
@@ -84,6 +86,19 @@ async function main() {
     console.log(`Created plan version ${result.version} (${result.planId})`);
     console.log("Rationale:", result.rationale);
     if (result.warnings.length > 0) console.log("Warnings:", result.warnings);
+
+    // The one synthesis both the Trends dashboard and the email below render.
+    // Non-fatal: a failure here costs the opening paragraph, not the plan or
+    // the debrief, so it must not take the rest of the job down with it.
+    console.log("Writing the coach's read for the week just ended...");
+    try {
+      const read = await generateCoachsRead(result.assessment.weekStartDate, result.assessment.weekEndDate);
+      console.log(
+        `Coach's read (${read.availableReadCount}/${read.totalReadCount} signals readable${read.isSparse ? ", sparse" : ""}): ${read.summaryText}`
+      );
+    } catch (err) {
+      console.error("Failed to generate the coach's read — continuing without it", err);
+    }
 
     console.log("Sending weekly debrief email...");
     await sendWeeklyDebrief(result);

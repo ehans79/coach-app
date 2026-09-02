@@ -50,6 +50,13 @@
       "when": 1788305240648,
       "tag": "0006_amazing_northstar",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788340783083,
+      "tag": "0007_absent_wendell_vaughn",
+      "breakpoints": true
     }
   ]
 }

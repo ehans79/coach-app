@@ -505,3 +505,27 @@ export const criticalPowerFits = pgTable("critical_power_fits", {
   isCurrent: boolean("is_current").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// Coach's read — the one synthesized, plain-language paragraph that opens both
+// the Trends dashboard and the weekly debrief email. Generated once per week by
+// the Sunday job over everything Stage 1/2/3 already computed (VDOT, threshold,
+// CS/CP, the four fatigue signals, the intensity split) and persisted here so
+// both surfaces render the SAME text rather than each prompting for their own.
+// One row per week (unique on week_start_date), upserted so a re-run of the job
+// replaces rather than duplicates.
+// ---------------------------------------------------------------------------
+export const coachReads = pgTable("coach_reads", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  weekStartDate: date("week_start_date").notNull().unique(),
+  weekEndDate: date("week_end_date").notNull(),
+  summaryText: text("summary_text").notNull(),
+  /** True when too few signals were readable to say much — the summary says so plainly. */
+  isSparse: boolean("is_sparse").notNull(),
+  availableReadCount: integer("available_read_count").notNull(),
+  totalReadCount: integer("total_read_count").notNull(),
+  inputs: jsonb("inputs").notNull(), // the exact snapshot fed to the LLM, kept for transparency/debugging
+  model: text("model").notNull(),
+  generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getEnv } from "@/lib/env";
 import { regeneratePlanForNextWeek } from "@/lib/coaching/regeneration";
+import { generateCoachsRead, type CoachsRead } from "@/lib/coaching/coachsRead";
 import { sendWeeklyDebrief } from "@/lib/email/sendWeeklyDebrief";
 
 /**
@@ -10,6 +11,10 @@ import { sendWeeklyDebrief } from "@/lib/email/sendWeeklyDebrief";
  * now" dashboard action). Optional JSON body: { "date": "YYYY-MM-DD" } to
  * simulate a specific "today", and { "sendEmail": true } to also send the
  * weekly debrief for the regenerated result (testing the full chain).
+ *
+ * Mirrors the cron's chain, coach's read included — the email reads that text
+ * from the DB, so skipping it here would silently send a debrief missing its
+ * opening paragraph.
  */
 export async function POST(request: NextRequest) {
   const env = getEnv();
@@ -23,9 +28,18 @@ export async function POST(request: NextRequest) {
 
   const result = await regeneratePlanForNextWeek(today);
 
+  // Non-fatal, as in the cron: losing the opening paragraph shouldn't fail a
+  // regeneration that otherwise succeeded.
+  let coachsRead: CoachsRead | null = null;
+  try {
+    coachsRead = await generateCoachsRead(result.assessment.weekStartDate, result.assessment.weekEndDate);
+  } catch (err) {
+    console.error("Failed to generate the coach's read — continuing without it", err);
+  }
+
   if (body?.sendEmail === true) {
     await sendWeeklyDebrief(result);
   }
 
-  return NextResponse.json(result);
+  return NextResponse.json({ ...result, coachsRead });
 }

@@ -9,6 +9,7 @@ import {
   WRIST_POWER_CAVEAT,
 } from "@/lib/dashboard/queries";
 import { assessTrainingStrain } from "@/lib/metrics/strain";
+import { getLatestCoachsRead, assessCoachsReadFreshness } from "@/lib/coaching/coachsRead";
 import { formatPace } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -25,9 +26,10 @@ import { VdotTrendChart } from "@/components/charts/VdotTrendChart";
 import { MeanMaxPaceChart } from "@/components/charts/MeanMaxPaceChart";
 import { PowerDurationChart } from "@/components/charts/PowerDurationChart";
 import { VdotPanel } from "@/components/VdotPanel";
+import { CoachsReadPanel } from "@/components/CoachsReadPanel";
 
 export default async function TrendsPage() {
-  const [volumeTrend, zoneTrend, dailyLoadTrend, intensityDistribution, vdot, criticalSpeed, strain, power] =
+  const [volumeTrend, zoneTrend, dailyLoadTrend, intensityDistribution, vdot, criticalSpeed, strain, power, coachsRead] =
     await Promise.all([
       getWeeklyVolumeTrend(),
       getZoneAdherenceTrend(),
@@ -37,11 +39,17 @@ export default async function TrendsPage() {
       getCriticalSpeedView(),
       assessTrainingStrain(),
       getPowerDurationView(),
+      getLatestCoachsRead(),
     ]);
 
   return (
     <div className="mx-auto max-w-5xl">
       <h1 className="mb-6 text-2xl font-extrabold tracking-tight text-ink-primary">Trends</h1>
+
+      {/* First thing on the page: the synthesis, then the evidence behind it. */}
+      <div className="mb-4">
+        <CoachsReadPanel read={coachsRead} freshness={assessCoachsReadFreshness(coachsRead)} />
+      </div>
 
       {strain.triggered && (
         <div className="mb-4">

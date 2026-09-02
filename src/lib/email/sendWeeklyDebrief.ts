@@ -5,6 +5,7 @@ import { activities, activityComments, emailReports, dailyLoad } from "@/lib/db/
 import { getEnv } from "@/lib/env";
 import { getVdotView, getZoneAdherenceTrend } from "@/lib/dashboard/queries";
 import { getWeeklyLoadContext } from "@/lib/coaching/commentary";
+import { getCoachsReadForWeek } from "@/lib/coaching/coachsRead";
 import { assessTrainingStrain } from "@/lib/metrics/strain";
 import { getCurrentCriticalSpeed } from "@/lib/metrics/criticalSpeed";
 import { formatKm, formatDuration, formatPace } from "@/lib/format";
@@ -130,11 +131,12 @@ function formatDateRange(start: string, end: string): string {
 }
 
 /**
- * Sends the weekly debrief right after regeneration finishes (chained, not
- * a separate schedule, per the brief). Builds the email straight from the
- * regeneration result rather than re-deriving everything from scratch.
+ * Builds the debrief HTML from a regeneration result. Split out from the send
+ * so a test/preview can produce byte-identical email without touching Resend or
+ * the email_reports log — the alternative, a script re-assembling these props
+ * itself, would be testing something other than what actually ships.
  */
-export async function sendWeeklyDebrief(regen: RegenerationResult): Promise<void> {
+export async function renderWeeklyDebriefHtml(regen: RegenerationResult): Promise<string> {
   const env = getEnv();
   const { assessment, newWeek } = regen;
 
@@ -189,16 +191,22 @@ export async function sendWeeklyDebrief(regen: RegenerationResult): Promise<void
       primaryZone: w.primaryZone ?? null,
     }));
 
-  const [loadContext, fitness, strain] = await Promise.all([
+  // Read, not generated, on purpose: the Sunday job writes the coach's read once
+  // and both this email and the Trends dashboard render that same text. If the
+  // generation step failed, the email opens without it rather than prompting for
+  // a second, subtly different synthesis of the same week.
+  const [loadContext, fitness, strain, coachsRead] = await Promise.all([
     buildLoadContext(assessment.weekStartDate, assessment.weekEndDate),
     buildFitness(assessment.weekEndDate),
     buildStrain(assessment.weekEndDate),
+    getCoachsReadForWeek(assessment.weekStartDate),
   ]);
 
-  const html = await render(
+  return render(
     WeeklyDebrief({
       weekRangeLabel: `Week of ${formatDateRange(assessment.weekStartDate, assessment.weekEndDate)}`,
       weekVerdict: regen.weekVerdict,
+      coachsRead: coachsRead?.summaryText ?? null,
       sessionsPlanned: assessment.sessionsPlanned,
       sessionsCompleted: assessment.sessionsCompleted,
       totalDistanceLabel: formatKm(assessment.actualRunVolumeKm * 1000),
@@ -214,6 +222,16 @@ export async function sendWeeklyDebrief(regen: RegenerationResult): Promise<void
       strain,
     })
   );
+}
+
+/**
+ * Sends the weekly debrief right after regeneration finishes (chained, not
+ * a separate schedule, per the brief). Builds the email straight from the
+ * regeneration result rather than re-deriving everything from scratch.
+ */
+export async function sendWeeklyDebrief(regen: RegenerationResult): Promise<void> {
+  const env = getEnv();
+  const html = await renderWeeklyDebriefHtml(regen);
 
   let status: "sent" | "failed" = "sent";
   let resendMessageId: string | null = null;
@@ -232,7 +250,7 @@ export async function sendWeeklyDebrief(regen: RegenerationResult): Promise<void
 
   await db.insert(emailReports).values({
     planId: regen.planId,
-    weekStartDate: assessment.weekStartDate,
+    weekStartDate: regen.assessment.weekStartDate,
     status,
     resendMessageId,
     error,
