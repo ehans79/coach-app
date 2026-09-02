@@ -145,19 +145,40 @@ export function WeeklyDebrief(props: WeeklyDebriefProps) {
       <Preview>{props.weekVerdict}</Preview>
       <Body style={{ backgroundColor: colors.page, fontFamily: "Arial, Helvetica, sans-serif", margin: 0, padding: 0 }}>
         <Container style={{ maxWidth: 560, margin: "0 auto", padding: "24px 16px" }}>
-          {/* Letterhead: the mark alone, above the hero card. The 2x asset is
-              rendered at half size so it stays sharp on retina displays, and
-              carries alt text because nothing else here names the sender when
-              a client blocks images. */}
-          <Section style={{ marginBottom: 12 }}>
-            <Img
-              src={props.logoUrl}
-              width="33"
-              height="28"
-              alt="Coach"
-              style={{ display: "block", border: 0, outline: "none" }}
-            />
-          </Section>
+          {/* Masthead: the mark alone, centred above the hero card. A raw table
+              rather than <Section>, because Section renders its children into a
+              bare <td> with no attributes — and align on the cell is what
+              actually centres an image across clients. This table is a direct
+              child of Container, so it spans the same box as the card below and
+              the mark lands on the card's own centre axis rather than floating
+              against the full email width.
+
+              The 2x asset is rendered at half its pixel size to stay sharp on
+              retina, and carries alt text because nothing else here names the
+              sender when a client blocks images. */}
+          <table
+            role="presentation"
+            width="100%"
+            border={0}
+            cellPadding={0}
+            cellSpacing={0}
+            style={{ width: "100%", borderCollapse: "collapse" }}
+          >
+            <tbody>
+              <tr>
+                {/* 4px on top of Container's own 24px = 28px above, matching the 28px below. */}
+                <td align="center" style={{ textAlign: "center", padding: "4px 0 28px" }}>
+                  <Img
+                    src={props.logoUrl}
+                    width="70"
+                    height="60"
+                    alt="Coach"
+                    style={{ display: "block", margin: "0 auto", border: 0, outline: "none" }}
+                  />
+                </td>
+              </tr>
+            </tbody>
+          </table>
 
           <Section
             style={{

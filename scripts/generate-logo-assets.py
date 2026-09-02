@@ -116,8 +116,8 @@ def main() -> None:
     print("\ninline marks (2x for retina, displayed at half these heights):")
     save(by_height(flat_mark, 64), ROOT / "public" / "logo-mark-64.png",
          format="PNG", optimize=True)   # nav, rendered at 32px tall
-    save(by_height(flat_mark, 56), ROOT / "public" / "logo-mark-email.png",
-         format="PNG", optimize=True)   # email header, rendered at 28px tall
+    save(by_height(flat_mark, 120), ROOT / "public" / "logo-mark-email.png",
+         format="PNG", optimize=True)   # email masthead, rendered at 60px tall
 
 
 if __name__ == "__main__":
