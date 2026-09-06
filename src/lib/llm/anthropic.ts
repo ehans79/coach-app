@@ -39,57 +39,33 @@ export async function generateText(params: {
 
 /**
  * Structured generation via a forced tool call rather than free-text + a
- * regex JSON extraction — the zod schema is compiled to the tool's
- * `input_schema` (constraining what the model can even emit, e.g. an enum
- * of valid Garmin exercise identifiers), `strict: true` asks Anthropic to
- * enforce it server-side, and the response is still re-validated locally
- * with the same schema so a type-safe, guaranteed-valid value comes back.
- */
-/**
- * Anthropic's `strict: true` tool schemas accept only a subset of JSON Schema,
- * and reject the whole request with a 400 rather than ignoring what they don't
- * support. Numeric bounds (`minimum`/`maximum`/`exclusive*`/`multipleOf`),
- * `maxItems`, a `minItems` above 1, and object property counts are all out;
- * string bounds (`minLength`/`maxLength`/`pattern`/`format`), enums and
- * `const` are all fine.
+ * regex JSON extraction: the zod schema is compiled to the tool's
+ * `input_schema`, so the model sees the exact shape it must produce —
+ * including the enum of valid Garmin exercise names — and the response is
+ * re-validated locally with the same schema, which is what gives a type-safe,
+ * guaranteed-valid value back rather than `unknown`.
  *
- * Zod emits the unsupported keywords from ordinary `.min()`/`.max()` calls, so
- * translate them here rather than banning those calls at every call site — that
- * mismatch is what killed the weekly cron once the strength schema started
- * emitting `sections` with min/max 4 (the API's own message misreports the
- * offending values, so it points nowhere useful).
+ * Deliberately NOT sent with `strict: true`. Strict compiles the schema into a
+ * decoding grammar and rejects the request outright when it can't, and this
+ * schema is far outside what that compiler accepts — measured against the live
+ * API, not guessed:
  *
- * Dropping them costs nothing structural: the bounds are still enforced locally
- * by the re-parse in generateStructured, and each affected field states them in
- * its description, which is what the model actually reads.
+ *   - "too many optional parameters (78) ... (limit: 24)". The weekly schema
+ *     inlines the workout object once per weekday, so its 7 optional fields
+ *     plus the strength section's 4 count seven times over. Emitting `$defs`
+ *     via zod's `reused: "ref"` does drop the count to 12, and the request is
+ *     then rejected as "Schema is too complex" instead.
+ *   - that complexity ceiling is what really rules strict out here: the
+ *     exercise-name enum trips it at 200 entries, and the catalog has 1527.
+ *     There is no version of this schema that keeps the real catalog and
+ *     compiles.
+ *
+ * Without strict, the same schema — enum, bounds and all — is accepted as-is,
+ * and every constraint still reaches the model as part of the tool definition.
+ * What's lost is only the server-side guarantee, so validity rests on the local
+ * re-parse below plus ExerciseCatalog.lookup(): a bad response becomes a thrown
+ * error rather than bad data reaching the database.
  */
-const UNSUPPORTED_KEYWORDS = [
-  "minimum",
-  "maximum",
-  "exclusiveMinimum",
-  "exclusiveMaximum",
-  "multipleOf",
-  "maxItems",
-  "minProperties",
-  "maxProperties",
-] as const;
-
-function stripUnsupportedConstraints(node: unknown): void {
-  if (Array.isArray(node)) {
-    for (const child of node) stripUnsupportedConstraints(child);
-    return;
-  }
-  if (!node || typeof node !== "object") return;
-
-  const obj = node as Record<string, unknown>;
-  for (const keyword of UNSUPPORTED_KEYWORDS) delete obj[keyword];
-  // minItems survives, but only as 0 or 1 — clamping keeps "non-empty", which
-  // is the closest the wire schema can get to any larger minimum.
-  if (typeof obj.minItems === "number" && obj.minItems > 1) obj.minItems = 1;
-
-  for (const child of Object.values(obj)) stripUnsupportedConstraints(child);
-}
-
 export async function generateStructured<T>(params: {
   system: string;
   prompt: string;
@@ -104,7 +80,6 @@ export async function generateStructured<T>(params: {
     $schema?: string;
   };
   void _dialect;
-  stripUnsupportedConstraints(inputSchema);
 
   const response = await getClient().messages.create({
     model: COACHING_MODEL,
@@ -116,7 +91,6 @@ export async function generateStructured<T>(params: {
         name: params.toolName,
         description: params.toolDescription,
         input_schema: inputSchema as Anthropic.Tool.InputSchema,
-        strict: true,
       },
     ],
     tool_choice: { type: "tool", name: params.toolName },
@@ -129,8 +103,8 @@ export async function generateStructured<T>(params: {
     throw new Error(`Claude response had no tool_use block (stop_reason: ${response.stop_reason})`);
   }
 
-  // Re-validated locally even though Anthropic enforces the schema
-  // server-side (strict: true) — belt and suspenders, and it's what gives
-  // us a properly typed value back rather than `unknown`.
+  // The only enforcement there is, now that strict is off (see above): this
+  // turns a schema-violating response into a thrown error instead of bad data,
+  // and gives us a properly typed value back rather than `unknown`.
   return params.schema.parse(toolUseBlock.input);
 }

@@ -1,11 +1,14 @@
 // Structured-output schema + rendering for strength workouts. The zod schema
-// constrains every exercise the LLM can select to the full Garmin exercise
-// name reference table (src/lib/coaching/exerciseCatalog.ts) via an enum of
-// exact Garmin Connect display strings — the model literally cannot emit a
-// name that isn't in the garmin_exercises table, so whatever it suggests is
-// guaranteed typeable verbatim into Garmin Connect's manual exercise picker
-// (this is a naming-match aid, not an API push — Edu hand-enters each
-// session himself). The formatter then turns the validated, catalog-backed
+// pins every exercise the LLM can select to the full Garmin exercise name
+// reference table (src/lib/coaching/exerciseCatalog.ts) via an enum of exact
+// Garmin Connect display strings, so whatever it suggests is typeable verbatim
+// into Garmin Connect's manual exercise picker (this is a naming-match aid,
+// not an API push — Edu hand-enters each session himself). The enum is a
+// strong instruction rather than a hard stop: the tool call can't be sent with
+// `strict: true` at this catalog size (see generateStructured for the measured
+// reason), so an off-catalog name is caught on the way in by the re-parse and
+// lookup below rather than being impossible to emit.
+// The formatter then turns the validated, catalog-backed
 // structure into the same free-text template the rest of the app
 // (StrengthSessionDetail's legacy fallback, weekly email, etc.) already
 // knows how to render, so nothing downstream breaks.
@@ -81,11 +84,11 @@ export function buildStrengthWorkoutSchema(exerciseNames: string[]) {
 
 export type StrengthWorkoutModelOutput = z.infer<ReturnType<typeof buildStrengthWorkoutSchema>>;
 
-/** Resolves the model's exercise names against the reference table. Throws
- * if the model somehow returned a name outside the table — schema
- * `strict: true` plus the local zod re-parse in generateStructured should
- * make that unreachable, but this is the last line of defense before it
- * reaches the database. */
+/** Resolves the model's exercise names against the reference table. Throws if
+ * the model returned a name outside the table — with strict off this is a real
+ * (if unlikely) possibility rather than a theoretical one, and together with
+ * the zod re-parse in generateStructured it is the last line of defense before
+ * an invented exercise name reaches the database. */
 export function resolveStrengthWorkout(output: StrengthWorkoutModelOutput, catalog: ExerciseCatalog): StrengthWorkoutJson {
   return {
     sections: output.sections.map(
