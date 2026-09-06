@@ -30,7 +30,7 @@ export function buildStrengthWorkoutSchema(exerciseNames: string[]) {
       .describe(
         "The exact Garmin Connect exercise name from the reference list below — verbatim, never invented, and never a combination of two list entries. Commit to one specific exercise per step (e.g. \"Knee Push-up\", not \"Push-up (knee or full)\") — if you want an easier or harder variant, pick that variant's own list entry instead of describing a choice."
       ),
-    sets: z.number().int().min(1).max(6).optional().describe("Omit for an exercise repeated once per circuit round."),
+    sets: z.number().int().min(1).max(6).optional().describe("1-6 sets. Omit for an exercise repeated once per circuit round."),
     reps: z
       .string()
       .min(1)
@@ -41,7 +41,7 @@ export function buildStrengthWorkoutSchema(exerciseNames: string[]) {
       .min(0)
       .max(300)
       .optional()
-      .describe("Rest after this exercise before its next set (omit for a single-set exercise)."),
+      .describe("Seconds, 0-300. Rest after this exercise before its next set (omit for a single-set exercise)."),
   });
 
   const sectionSchema = z.object({
@@ -53,8 +53,14 @@ export function buildStrengthWorkoutSchema(exerciseNames: string[]) {
       .min(0)
       .max(300)
       .optional()
-      .describe("Rest after completing one full round before starting the next (only for multi-round sections)."),
-    exercises: z.array(exerciseSchema).min(1).max(8),
+      .describe(
+        "Seconds, 0-300. Rest after completing one full round before starting the next (only for multi-round sections)."
+      ),
+    exercises: z
+      .array(exerciseSchema)
+      .min(1)
+      .max(8)
+      .describe("Between 1 and 8 exercises, in the order the athlete performs them."),
   });
 
   return z
@@ -63,7 +69,9 @@ export function buildStrengthWorkoutSchema(exerciseNames: string[]) {
         .array(sectionSchema)
         .min(4)
         .max(4)
-        .describe("Exactly one section per label, in this order: Warm-up, Circuit, Core finisher, Cool-down."),
+        .describe(
+          "Exactly four sections — one per label, in this order: Warm-up, Circuit, Core finisher, Cool-down."
+        ),
     })
     .refine((val) => val.sections.map((s) => s.label).join("|") === SECTION_LABELS.join("|"), {
       message: `sections must be exactly [${SECTION_LABELS.join(", ")}] in that order, one each`,

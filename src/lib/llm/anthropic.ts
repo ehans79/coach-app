@@ -45,6 +45,51 @@ export async function generateText(params: {
  * enforce it server-side, and the response is still re-validated locally
  * with the same schema so a type-safe, guaranteed-valid value comes back.
  */
+/**
+ * Anthropic's `strict: true` tool schemas accept only a subset of JSON Schema,
+ * and reject the whole request with a 400 rather than ignoring what they don't
+ * support. Numeric bounds (`minimum`/`maximum`/`exclusive*`/`multipleOf`),
+ * `maxItems`, a `minItems` above 1, and object property counts are all out;
+ * string bounds (`minLength`/`maxLength`/`pattern`/`format`), enums and
+ * `const` are all fine.
+ *
+ * Zod emits the unsupported keywords from ordinary `.min()`/`.max()` calls, so
+ * translate them here rather than banning those calls at every call site — that
+ * mismatch is what killed the weekly cron once the strength schema started
+ * emitting `sections` with min/max 4 (the API's own message misreports the
+ * offending values, so it points nowhere useful).
+ *
+ * Dropping them costs nothing structural: the bounds are still enforced locally
+ * by the re-parse in generateStructured, and each affected field states them in
+ * its description, which is what the model actually reads.
+ */
+const UNSUPPORTED_KEYWORDS = [
+  "minimum",
+  "maximum",
+  "exclusiveMinimum",
+  "exclusiveMaximum",
+  "multipleOf",
+  "maxItems",
+  "minProperties",
+  "maxProperties",
+] as const;
+
+function stripUnsupportedConstraints(node: unknown): void {
+  if (Array.isArray(node)) {
+    for (const child of node) stripUnsupportedConstraints(child);
+    return;
+  }
+  if (!node || typeof node !== "object") return;
+
+  const obj = node as Record<string, unknown>;
+  for (const keyword of UNSUPPORTED_KEYWORDS) delete obj[keyword];
+  // minItems survives, but only as 0 or 1 — clamping keeps "non-empty", which
+  // is the closest the wire schema can get to any larger minimum.
+  if (typeof obj.minItems === "number" && obj.minItems > 1) obj.minItems = 1;
+
+  for (const child of Object.values(obj)) stripUnsupportedConstraints(child);
+}
+
 export async function generateStructured<T>(params: {
   system: string;
   prompt: string;
@@ -59,6 +104,7 @@ export async function generateStructured<T>(params: {
     $schema?: string;
   };
   void _dialect;
+  stripUnsupportedConstraints(inputSchema);
 
   const response = await getClient().messages.create({
     model: COACHING_MODEL,
