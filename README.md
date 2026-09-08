@@ -64,17 +64,34 @@ npm run db:migrate     # applies pending migrations
 This folder is the Railway service **Root Directory** in a monorepo — don't
 assume the repo root is the project root anywhere in configs or scripts.
 
-Three services, all pointed at this same repo + root directory:
+Three services. Two build from this repo + root directory; the hourly poll is
+a plain `curlimages/curl` image that hits the web service's sync endpoint:
 
-| Service | Start command | Schedule |
-|---|---|---|
-| `web` | `npm start` (after `npm run build`) | always on |
-| `cron-weekly` | `npm run cron:weekly` | Sunday evening, Railway Cron Schedule |
-| `cron-fallback-poll` | `npm run poll:fallback` | hourly, Railway Cron Schedule |
+| Service | Source | Start command | Schedule |
+|---|---|---|---|
+| `coach-app` (web) | this repo | `npm start` (after `npm run build`) | always on |
+| `cron-weekly` | this repo | `npm run cron:weekly` | `0 18 * * 0` (Sunday 18:00 UTC) |
+| `cron-fallback-poll` | image `curlimages/curl` | `/bin/sh -c 'exec curl -sSf --max-time 900 -X POST --oauth2-bearer "$INTERNAL_API_TOKEN" "$APP_BASE_URL/api/internal/sync"'` | `0 * * * *` (hourly) |
 
-Add Railway's managed Postgres plugin to the project and attach it to `web`
-(and the cron services) so `DATABASE_URL` is injected automatically. Set the
-other env vars from `.env.example` on all three services.
+The `/bin/sh -c` wrapper on `cron-fallback-poll` is load-bearing. Railway runs
+a Docker-image service's start command in exec form, replacing the image's
+entrypoint, so without a shell `$APP_BASE_URL` and `$INTERNAL_API_TOKEN` are
+passed to curl as literal text and every run crashes with
+`curl: (3) URL rejected: Bad hostname`. `--oauth2-bearer` sends the same
+`Authorization: Bearer …` header the route checks, without nested quoting.
+`-f` turns a non-2xx response into a non-zero exit so a broken token or a
+failing sync shows up as a crashed run rather than a silent success.
+
+Two Railway behaviours to know when changing that service: "Redeploy" clones
+the previous deployment's snapshot, old start command included, so a
+start-command change only takes effect after a genuine new deployment (the
+Deploy button, or `serviceInstanceDeployV2` via the API). A cron-schedule
+change, by contrast, is picked up by the existing deployment without one.
+
+Add Railway's managed Postgres plugin to the project and attach it to
+`coach-app` and `cron-weekly` so `DATABASE_URL` is injected automatically. Set
+the other env vars from `.env.example` on both; `cron-fallback-poll` only needs
+`APP_BASE_URL` and `INTERNAL_API_TOKEN`.
 
 After first deploy: run migrations + seed once (`railway run npm run
 db:migrate && npm run db:seed`), then visit `/connect/strava?token=...` on
