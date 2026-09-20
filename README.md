@@ -49,6 +49,39 @@ weather · deployed on Railway.
 - `APP_BASE_URL` — no trailing slash; used to build the Strava OAuth
   redirect URI and dashboard links.
 
+### Following an externally-built plan
+
+When Edu is following a plan built somewhere else (currently a Runna plan),
+that plan owns the *structure* and this app owns the coaching on top of it.
+`PlanDocument.externalPlan` holds a per-week skeleton — which day carries
+which session, its type, distance and target zone — and
+`regeneratePlanForNextWeek` enforces it: the Sunday job may still rewrite
+pacing, HR targets, strength sessions and the rationale, but it cannot move,
+resize, add or drop a session, and it no longer clamps distances to its own
+volume guardrails (the external plan owns periodisation). Where a guardrail
+and the pinned week disagree the pinned week wins, and the conflict is
+recorded in `guardrails_applied.warnings` rather than silently applied.
+
+Import or re-import the current Runna block with:
+
+```bash
+npx tsx scripts/import-runna-plan.ts --dry-run   # build and validate, write nothing
+npx tsx scripts/import-runna-plan.ts             # insert as a new active version
+```
+
+The script validates every strength exercise name against the Garmin catalog
+before writing, marks already-completed sessions from synced Strava
+activities, and supersedes the previous active plan rather than editing it.
+After importing, re-run matching and commentary for activities inside the
+imported date range so the dashboard judges them against the new
+prescriptions — the old comments were written against the superseded plan.
+
+Note the skeleton is only as detailed as its source. Runna's PDF export gives
+each session's day, headline distance and Runna's own name for it ("Extended
+Kms", "Mile Repeats") but not the rep-by-rep breakdown, so quality sessions
+carry that label and distance verbatim, add this app's HR/pace targets, and
+point back at the Runna app for the exact reps.
+
 ### Database migrations
 
 `npm run db:push` (drizzle-kit push) is fine for local dev iteration. For

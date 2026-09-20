@@ -5,7 +5,15 @@ import { plans, planWorkouts, planWorkoutExercises } from "@/lib/db/schema";
 import { assessWeek, type WeekAssessment } from "./weeklyAssessment";
 import { getCurrentZoneVersion, type CurrentZoneVersion } from "./zones";
 import { computeGuardrails, type Guardrails } from "./guardrails";
-import { flattenPlanWorkouts, type PlanDocument, type PlanWeekJson, type PlanDayJson } from "./plan";
+import {
+  flattenPlanWorkouts,
+  findSkeletonWeek,
+  type PlanDocument,
+  type PlanWeekJson,
+  type PlanDayJson,
+  type ExternalSkeletonWeek,
+  type ExternalSkeletonSession,
+} from "./plan";
 import { generateStructured, COACHING_MODEL } from "@/lib/llm/anthropic";
 import { getAllExercises, ExerciseCatalog } from "./exerciseCatalog";
 import {
@@ -110,6 +118,8 @@ function buildPrompt(params: {
   guardrails: Guardrails;
   referenceWeek: PlanWeekJson | undefined;
   currentZones: CurrentZoneVersion | null;
+  skeletonWeek: ExternalSkeletonWeek | undefined;
+  externalProvider: string | undefined;
 }): string {
   return `Athlete assessment (from the original plan): ${JSON.stringify(params.plan.assessment)}
 Current HR/pace zones (live, as of ${params.currentZones?.asOfDate ?? "n/a"} — prescribe against THESE, not any zone table quoted elsewhere): ${JSON.stringify(
@@ -125,9 +135,11 @@ ${JSON.stringify(params.guardrails, null, 2)}
 
 The upcoming week is week ${params.weekNumber} (${params.weekStartDate} to ${params.weekEndDate}), days ${DAY_NAMES.join(", ")}.
 ${
-  params.referenceWeek
-    ? `For loose reference, here is what this week originally looked like in the hand-built plan (before this trend-based regeneration) — deviate from it as needed to satisfy the guardrails and the actual assessment above, but keep the same weekly rhythm (which days are runs/strength/rest) unless the assessment gives a clear reason to change it:\n${JSON.stringify(params.referenceWeek, null, 2)}`
-    : "There is no pre-built reference for this week — continue the same weekly rhythm as recent weeks (3 runs/week, 2 strength sessions/week, rest days between)."
+  params.skeletonWeek
+    ? describeSkeletonWeek(params.externalProvider ?? "external", params.skeletonWeek)
+    : params.referenceWeek
+      ? `For loose reference, here is what this week originally looked like in the hand-built plan (before this trend-based regeneration) — deviate from it as needed to satisfy the guardrails and the actual assessment above, but keep the same weekly rhythm (which days are runs/strength/rest) unless the assessment gives a clear reason to change it:\n${JSON.stringify(params.referenceWeek, null, 2)}`
+      : "There is no pre-built reference for this week — continue the same weekly rhythm as recent weeks (3 runs/week, 2 strength sessions/week, rest days between)."
 }
 
 A rest day is a workout entry with sport "rest". Every one of the 7 days must have at least one workout entry (use a rest-day entry for days with nothing planned). Distances in meters, metric only.`;
@@ -209,6 +221,103 @@ function clampToGuardrails(
   return { week: llmWeek, warnings };
 }
 
+// ---------------------------------------------------------------------------
+// External-plan skeleton enforcement
+// ---------------------------------------------------------------------------
+
+function skeletonSessionLine(session: ExternalSkeletonSession): string {
+  const bits = [`sport=${session.sport}`];
+  if (session.type) bits.push(`type=${session.type}`);
+  bits.push(`label="${session.label}"`);
+  if (session.distanceMeters) bits.push(`distance=${session.distanceMeters}m`);
+  if (session.durationMinutes) bits.push(`duration=${session.durationMinutes}min`);
+  if (session.primaryZone) bits.push(`primaryZone="${session.primaryZone}"`);
+  if (session.addedByApp) bits.push("(added by this app, not by the external plan)");
+  if (session.note) bits.push(`note="${session.note}"`);
+  return bits.join(", ");
+}
+
+/** Renders the pinned week as an explicit day-by-day contract for the prompt. */
+function describeSkeletonWeek(provider: string, week: ExternalSkeletonWeek): string {
+  const lines = week.days.map((day) => {
+    const dayName = dayOfWeekName(day.date);
+    const sessions = day.sessions.map((s) => `    - ${skeletonSessionLine(s)}`).join("\n");
+    return `  ${dayName} ${day.date}:\n${sessions}`;
+  });
+  return `THIS WEEK IS PINNED to the athlete's ${provider} plan${week.focus ? ` — ${week.focus}` : ""}.
+The structure below is FIXED and is NOT yours to change. For every day you must emit exactly the sessions listed, in order, with exactly the sport, distance/duration and primaryZone given. Do not add sessions, drop sessions, move them between days, or alter any distance — the app overwrites those fields with these values afterwards regardless, so deviating only produces text that contradicts the prescription the athlete sees.
+
+${lines.join("\n")}
+
+What IS yours to write, and where all your coaching judgement should go:
+- the session "name" and the athlete-facing "humanReadable" instructions: warm-up, the structure of the reps, pacing and HR targets, and what to focus on or correct based on how last week actually went;
+- the full structured "strength" field for every strength session (the external plan does not prescribe these — they are this app's contribution);
+- "focus", "rationale" and "weekVerdict".
+Use the guardrails below as context for your COACHING (how hard to push the quality session, how much to emphasise holding the easy runs easy), not as distance caps — the external plan owns periodisation now, so where a guardrail and the pinned structure disagree, the pinned structure wins and you should say so in the rationale if it matters.`;
+}
+
+/**
+ * Rebuilds the LLM's week so every fixed field comes from the skeleton and only
+ * the prose/strength detail comes from the model. Belt-and-braces on top of the
+ * prompt: the athlete's actual plan must match what the external app says
+ * regardless of what the model returned.
+ */
+function applySkeleton(
+  llmWeek: LlmWeekResponse,
+  skeleton: ExternalSkeletonWeek
+): { week: LlmWeekResponse; warnings: string[] } {
+  const warnings: string[] = [];
+  const days = {} as LlmWeekResponse["days"];
+
+  for (const day of skeleton.days) {
+    const dayName = dayOfWeekName(day.date) as (typeof DAY_NAMES)[number];
+    const proposed = [...(llmWeek.days[dayName] ?? [])];
+    const rebuilt: LlmWorkout[] = [];
+
+    for (const session of day.sessions) {
+      // Prefer a same-sport proposal so the prose actually describes this session.
+      const matchIdx = proposed.findIndex((w) => w.sport === session.sport);
+      const match = matchIdx >= 0 ? proposed.splice(matchIdx, 1)[0] : undefined;
+      if (!match) {
+        warnings.push(
+          `Model returned no ${session.sport} session for ${dayName} ${day.date} — inserted the pinned "${session.label}" with no coaching detail.`
+        );
+      } else if (session.distanceMeters && match.distanceMeters && Math.abs(match.distanceMeters - session.distanceMeters) > 100) {
+        warnings.push(
+          `Model proposed ${(match.distanceMeters / 1000).toFixed(1)}km for ${dayName}'s "${session.label}" against the pinned ${(session.distanceMeters / 1000).toFixed(1)}km — overwritten with the pinned distance.`
+        );
+      }
+
+      rebuilt.push({
+        ...(match ?? { sport: session.sport, name: session.label }),
+        sport: session.sport,
+        type: session.type ?? match?.type,
+        name: match?.name ?? session.label,
+        distanceMeters: session.distanceMeters,
+        durationMinutes: session.durationMinutes ?? match?.durationMinutes,
+        primaryZone: session.primaryZone ?? match?.primaryZone,
+        // A strength session with no structured detail is worse than useless
+        // to hand-enter into Garmin, so surface it rather than silently ship it.
+        strength: session.sport === "strength" ? match?.strength : undefined,
+      } as LlmWorkout);
+
+      if (session.sport === "strength" && !match?.strength) {
+        warnings.push(`Strength session on ${dayName} ${day.date} came back without structured exercises.`);
+      }
+    }
+
+    for (const leftover of proposed) {
+      warnings.push(
+        `Model proposed an extra ${leftover.sport} session ("${leftover.name}") on ${dayName} ${day.date} that the pinned plan doesn't contain — dropped.`
+      );
+    }
+
+    days[dayName] = rebuilt;
+  }
+
+  return { week: { ...llmWeek, days }, warnings };
+}
+
 export interface RegenerationResult {
   planId: string;
   version: number;
@@ -273,6 +382,9 @@ export async function regeneratePlanForNextWeek(todayStr: string): Promise<Regen
   const referenceWeek = planJson.weeks.find((w) => w.weekNumber === weekNumber);
 
   const currentZones = await getCurrentZoneVersion();
+  // When the athlete is following an externally-built plan, that plan owns the
+  // week's structure and this engine only writes the coaching detail on top.
+  const skeletonWeek = findSkeletonWeek(planJson, weekStartDate);
   const prompt = buildPrompt({
     plan: planJson,
     weekNumber,
@@ -283,6 +395,8 @@ export async function regeneratePlanForNextWeek(todayStr: string): Promise<Regen
     guardrails,
     referenceWeek,
     currentZones,
+    skeletonWeek,
+    externalProvider: planJson.externalPlan?.provider,
   });
 
   const allExercises = await getAllExercises();
@@ -296,7 +410,22 @@ export async function regeneratePlanForNextWeek(todayStr: string): Promise<Regen
     toolDescription: "Submit the fully-specified training plan for the upcoming week.",
     maxTokens: 8192,
   });
-  const { week: clampedWeek, warnings } = clampToGuardrails(llmWeek, guardrails);
+  // Pinned weeks are not clamped: the external plan already periodises volume,
+  // and scaling its distances would put the app back in conflict with the plan
+  // the athlete is actually running. The guardrail comparison is still recorded
+  // as a warning so an unusually big jump is visible rather than silent.
+  const { week: clampedWeek, warnings } = skeletonWeek
+    ? applySkeleton(llmWeek, skeletonWeek)
+    : clampToGuardrails(llmWeek, guardrails);
+
+  if (skeletonWeek) {
+    const pinnedKm = totalRunDistanceMeters(clampedWeek.days) / 1000;
+    if (pinnedKm > guardrails.targetVolumeKmRange.max * 1.05) {
+      warnings.push(
+        `Pinned ${planJson.externalPlan?.provider ?? "external"} week is ${pinnedKm.toFixed(1)}km, above the ${guardrails.targetVolumeKmRange.max.toFixed(1)}km this app's guardrails would have allowed — left as prescribed (the external plan owns periodisation), but worth an eye on load.`
+      );
+    }
+  }
 
   const days: PlanDayJson[] = [];
   for (let i = 0; i < 7; i++) {
@@ -331,9 +460,9 @@ export async function regeneratePlanForNextWeek(todayStr: string): Promise<Regen
     startDate: weekStartDate,
     endDate: weekEndDate,
     phase: phase.name,
-    focus: clampedWeek.focus,
+    focus: skeletonWeek?.focus ?? clampedWeek.focus,
     targetHours: clampedWeek.targetHours,
-    isRecoveryWeek: guardrails.isRecoveryWeek,
+    isRecoveryWeek: skeletonWeek?.isRecoveryWeek ?? guardrails.isRecoveryWeek,
     days,
   };
 
@@ -361,7 +490,20 @@ export async function regeneratePlanForNextWeek(todayStr: string): Promise<Regen
       weekStartDate,
       source: "regeneration",
       rationale: clampedWeek.rationale,
-      guardrailsApplied: { ...guardrails, warnings, model: COACHING_MODEL, weekVerdict: clampedWeek.weekVerdict },
+      guardrailsApplied: {
+        ...guardrails,
+        warnings,
+        model: COACHING_MODEL,
+        weekVerdict: clampedWeek.weekVerdict,
+        pinnedTo: skeletonWeek
+          ? {
+              provider: planJson.externalPlan?.provider ?? "external",
+              planName: planJson.externalPlan?.planName ?? null,
+              weekNumber: skeletonWeek.weekNumber,
+              advisoryOnly: true, // guardrails did not clamp this week
+            }
+          : null,
+      },
       planJson: updatedPlan,
       isActive: true,
     })

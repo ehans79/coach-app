@@ -75,6 +75,69 @@ export interface PlanZoneJson {
   paceMinPerKm?: string;
 }
 
+// ---------------------------------------------------------------------------
+// External plan skeleton — when the athlete is following a plan built
+// somewhere else (currently Runna), that plan owns the *what*: which day
+// carries which session, how far it is, and what kind of session it is.
+// The regeneration engine is then only allowed to own the *how* — pacing, HR
+// targets, the strength sessions Runna doesn't prescribe, and the rationale.
+//
+// Without this, the Sunday job would happily regenerate its own week from its
+// own guardrails and quietly overwrite the plan the athlete is actually
+// running, which is exactly the conflict this was added to fix.
+// ---------------------------------------------------------------------------
+
+/** One prescribed session from the external plan. Every field here is fixed. */
+export interface ExternalSkeletonSession {
+  sport: string; // run | strength | rest
+  /** e.g. "intervals" | "easy" | "long" | "tempo" | "race" | "strength" */
+  type?: string;
+  /** The external plan's own name for the session, e.g. "Extended Kms". */
+  label: string;
+  distanceMeters?: number;
+  durationMinutes?: number;
+  /** Target zone text, parsed by assessZoneAdherence — must reflect the
+   * session's real intent, so a hard interval session isn't later flagged as
+   * "easy run drifted into Zone 3". */
+  primaryZone?: string;
+  /** Set for sessions this app adds on top of the external plan (strength),
+   * as opposed to ones the external plan prescribed itself. */
+  addedByApp?: boolean;
+  note?: string;
+}
+
+export interface ExternalSkeletonDay {
+  date: string; // YYYY-MM-DD
+  sessions: ExternalSkeletonSession[];
+}
+
+export interface ExternalSkeletonWeek {
+  weekNumber: number;
+  startDate: string;
+  endDate: string;
+  focus?: string;
+  isRecoveryWeek?: boolean;
+  days: ExternalSkeletonDay[];
+}
+
+export interface ExternalPlanSource {
+  provider: string; // "Runna"
+  planName: string;
+  importedAt: string;
+  /** Where the structure came from, for provenance on the dashboard. */
+  sourceDocument?: string;
+  note?: string;
+  weeks: ExternalSkeletonWeek[];
+}
+
+/** The skeleton week covering `weekStartDate`, if the plan is pinned to an external one. */
+export function findSkeletonWeek(
+  plan: PlanDocument,
+  weekStartDate: string
+): ExternalSkeletonWeek | undefined {
+  return plan.externalPlan?.weeks.find((w) => w.startDate === weekStartDate);
+}
+
 export interface PlanDocument {
   version: string;
   meta: {
@@ -104,6 +167,10 @@ export interface PlanDocument {
       note?: string;
     };
   };
+  /** Set when the athlete is following an externally-built plan (Runna) and
+   * this app is layering coaching on top of it rather than authoring the
+   * structure itself. See ExternalPlanSource. */
+  externalPlan?: ExternalPlanSource;
   phases: Array<{
     name: string;
     startWeek: number;
