@@ -76,11 +76,19 @@ After importing, re-run matching and commentary for activities inside the
 imported date range so the dashboard judges them against the new
 prescriptions — the old comments were written against the superseded plan.
 
-Note the skeleton is only as detailed as its source. Runna's PDF export gives
-each session's day, headline distance and Runna's own name for it ("Extended
-Kms", "Mile Repeats") but not the rep-by-rep breakdown, so quality sessions
-carry that label and distance verbatim, add this app's HR/pace targets, and
-point back at the Runna app for the exact reps.
+The skeleton is only as detailed as its source. Runna's one-page PDF export
+gives each session's day, headline distance and Runna's own name for it
+("Extended Kms", "Mile Repeats") but no rep breakdown; the per-session reps
+and target paces come from the Runna app itself and are transcribed into
+`RUNNA_WEEKS`. `assertDistances()` fails the import if any session's steps
+don't sum to the PDF's headline distance, which is the check that catches a
+bad transcription before it reaches the database.
+
+One consequence worth remembering when reading the plan: Runna's Sunday "long
+runs" are paced sessions, not easy runs, so only the Friday easy runs and the
+warm-up/cool-down segments carry the Zone 2 heart-rate ceiling. Prescribing
+the Sunday runs as Zone 1-2 is what made the app read correctly-executed
+sessions as Zone 3 drift, and then cut volume in response.
 
 ### Database migrations
 

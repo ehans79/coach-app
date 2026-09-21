@@ -31,24 +31,23 @@ import { flattenStrengthExercises } from "../src/lib/coaching/strengthSchema";
  * diverged into direct conflict. The app believed Edu was restarting from a
  * 9-week layoff and kept prescribing 2.5km run/walk intervals under a hard
  * 156bpm ceiling, reading every Runna session as a missed workout plus a
- * Zone 3 "drift", and cutting volume further each Sunday in response. Edu was
- * meanwhile running Runna's plan more or less as written. The app's numbers
- * were a coherent answer to a question that had stopped being true.
+ * Zone 3 "drift", and cutting volume further each Sunday in response.
  *
- * Runna now owns the structure (which day, which session type, how far).
- * This app owns everything Runna doesn't give him: HR-zone targets read
- * against his own data, per-session execution coaching, the two gym sessions,
- * and the weekly debrief. See ExternalPlanSource in src/lib/coaching/plan.ts —
- * the Sunday regeneration job reads that skeleton and is no longer allowed to
- * rewrite the structure underneath him.
+ * Runna owns the structure (which day, which session, how far, at what pace).
+ * This app owns what Runna doesn't give him: heart-rate context read against
+ * his own data, execution coaching, the two gym sessions, and the weekly
+ * debrief. See ExternalPlanSource in src/lib/coaching/plan.ts — the Sunday
+ * regeneration job reads that skeleton and cannot rewrite the structure.
  *
- * Source: "Functional Fitness Plan Overview.pdf", exported from Runna
- * 2026-09-07. The PDF is a one-page grid — it gives each session's day,
- * headline distance and Runna's own name for it ("Extended Kms", "Mile
- * Repeats"), but not the rep-by-rep breakdown. So every quality session below
- * carries Runna's label and distance verbatim and adds this app's HR/pace
- * targets and execution notes on top; the authoritative rep structure stays
- * in the Runna app itself, and the session text says so.
+ * Sources:
+ *  - "Functional Fitness Plan Overview.pdf" (Runna export, 2026-09-07) for
+ *    the 8-week grid: day, session name, headline distance.
+ *  - Rep-by-rep detail for weeks 3-8, supplied by Edu from the Runna app.
+ *    Every session's steps below sum to the PDF's headline distance, which is
+ *    asserted at build time (see assertDistances).
+ *
+ * Weeks 1-2 are already run and no rep detail was supplied for them, so they
+ * carry the grid-level prescription only and are flagged repDetail: false.
  *
  * Run with: npx tsx scripts/import-runna-plan.ts [--dry-run]
  */
@@ -57,47 +56,67 @@ const DRY_RUN = process.argv.includes("--dry-run");
 
 const PROVIDER = "Runna";
 const PLAN_NAME = "8 Week Functional Fitness Plan";
-const SOURCE_DOCUMENT = "Functional Fitness Plan Overview.pdf (exported from Runna, 2026-09-07)";
+const SOURCE_DOCUMENT =
+  "Functional Fitness Plan Overview.pdf (Runna export, 2026-09-07) + per-session rep detail from the Runna app";
 const RACE_DATE = "2026-11-01";
 const IMPORTED_AT = new Date().toISOString();
 
 // ---------------------------------------------------------------------------
-// Zone targets
+// Heart-rate context
 //
-// HRmax (195) is athlete-provided and exact, so HR is the authoritative target
-// throughout. The pace zones in the DB derive from a 35:00 5K that predates
-// the layoff and are demonstrably stale — Edu's Sep 20 long run averaged
-// 6:43/km at 164bpm, well inside a table that calls 6:52-7:39/km "Tempo", and
-// the metrics pipeline has been returning intensity factors above 1.0 on runs
-// labelled easy. So pace guidance below comes from his own last-fortnight
-// numbers, quoted as a sanity check on the HR target rather than as a zone.
+// HRmax (195) is athlete-provided and exact. The pace zones in the DB derive
+// from a 35:00 5K that predates the layoff and are stale — Runna is asking for
+// reps at 6:05/km and faster, which that table calls Zone 5 and beyond.
+//
+// So Runna's paces are the target and HR is the read-out, not the ceiling.
+// The exception is the genuinely conversational running (the Friday easy runs
+// and the warm-up/cool-down segments), where HR is the better guide because
+// there is no pace to chase.
+//
+// The bands below are estimated from Edu's own September runs, not from the
+// stale table: 7:04/km ran 143bpm, 6:33/km ran 158bpm, 6:42/km ran 164bpm.
+// They are deliberately quoted as expectations to sanity-check against, and
+// will tighten as the block produces more data.
 // ---------------------------------------------------------------------------
+const HR_NOTE_EASY =
+  "Heart rate is the guide here, not pace: keep it under 156bpm. If it drifts above, ease off until it settles back under ~145bpm.";
+const HR_NOTE_PACED =
+  "Run to Runna's pace and let heart rate land where it lands — on these segments Zone 3 is the intent, not a mistake. Expect roughly 160-170bpm at 6:45/km and 170-180bpm at 6:10/km, based on your September runs. Back off only if it is pinned above ~185bpm while the pace is still slipping.";
+const HR_NOTE_REPS =
+  "Chase the pace on the reps and take the walking rests properly — walk them, don't jog them, and let heart rate come most of the way down before the next rep. Expect to be in Zone 4 and above on the fast segments; that is the point of the session.";
+
 const ZONE_EASY = "Zone 1-2 (HR <156bpm)";
-const ZONE_LONG = "Zone 1-2 (HR <156bpm)";
+const ZONE_STEADY = "Zone 2-3 (HR 126-171bpm)";
 const ZONE_THRESHOLD = "Zone 3-4 (HR 157-186bpm)";
 const ZONE_INTERVAL = "Zone 4-5 (HR 172bpm+)";
-const ZONE_RACE = "Zone 3-4 (HR 157-186bpm)";
 const ZONE_STRENGTH = "N/A (strength)";
 
-const PACE_EASY = "7:30-8:15/km";
-const PACE_LONG = "7:15-8:00/km";
-const PACE_THRESHOLD = "6:20-6:40/km";
-const PACE_INTERVAL = "5:50-6:10/km";
-
-// The one correction this block is built around — see the rationale below.
-const EASY_DAY_RULE =
-  "Hard ceiling 156bpm. If HR climbs past it, slow down or walk until it drops back under ~145bpm, then carry on. Finishing able to hold a full conversation is the whole point of this session.";
+const CONVERSATIONAL_PACE = "roughly 7:00-7:45/km for you";
 
 // ---------------------------------------------------------------------------
-// The Runna grid, transcribed from the PDF. Mon/Wed/Thu/Sat are rest days in
-// Runna's own plan; the Mon/Thu strength sessions are this app's addition
-// (flagged addedByApp) and are rest from *running* either way.
+// The Runna plan
 // ---------------------------------------------------------------------------
+
+type Step =
+  | { run: number; pace?: string; effort?: "conversational" | "comfortable"; note?: string }
+  | { rest: number };
+
+function isRun(s: Step): s is Extract<Step, { run: number }> {
+  return "run" in s;
+}
+
 interface RunnaSession {
   label: string;
   type: "intervals" | "tempo" | "easy" | "long" | "race";
-  km: number;
+  km: number; // the PDF's headline distance, asserted against the steps
+  zone: string;
+  hrNote: string;
+  /** Absent for weeks 1-2, where only the grid-level prescription is known. */
+  steps?: Step[];
+  /** Coaching this app adds on top of Runna's prescription. */
+  coach?: string;
 }
+
 interface RunnaWeek {
   weekNumber: number;
   startDate: string;
@@ -106,74 +125,281 @@ interface RunnaWeek {
   sunday: RunnaSession;
 }
 
+const EASY_3KM = (km: number): RunnaSession => ({
+  label: "Easy Run",
+  type: "easy",
+  km,
+  zone: ZONE_EASY,
+  hrNote: HR_NOTE_EASY,
+  steps: [{ run: km * 1000, effort: "conversational" }],
+  coach:
+    "The only genuinely easy run in your week. It exists to add aerobic volume without adding fatigue, so resist turning it into a third quality session — that is what would break this block, not the mileage.",
+});
+
 const RUNNA_WEEKS: RunnaWeek[] = [
   {
     weekNumber: 1,
     startDate: "2026-09-07",
-    tuesday: { label: "Drop Set", type: "intervals", km: 3 },
-    friday: { label: "Easy Run", type: "easy", km: 3 },
-    sunday: { label: "Long Run", type: "long", km: 4 },
+    tuesday: { label: "Drop Set", type: "intervals", km: 3, zone: ZONE_INTERVAL, hrNote: HR_NOTE_REPS },
+    friday: { label: "Easy Run", type: "easy", km: 3, zone: ZONE_EASY, hrNote: HR_NOTE_EASY },
+    sunday: { label: "Long Run", type: "long", km: 4, zone: ZONE_STEADY, hrNote: HR_NOTE_PACED },
   },
   {
     weekNumber: 2,
     startDate: "2026-09-14",
-    tuesday: { label: "On and Offs", type: "intervals", km: 4 },
-    friday: { label: "Easy Run", type: "easy", km: 4 },
-    sunday: { label: "Long Run", type: "long", km: 5 },
+    tuesday: { label: "On and Offs", type: "intervals", km: 4, zone: ZONE_INTERVAL, hrNote: HR_NOTE_REPS },
+    friday: { label: "Easy Run", type: "easy", km: 4, zone: ZONE_EASY, hrNote: HR_NOTE_EASY },
+    sunday: { label: "Long Run", type: "long", km: 5, zone: ZONE_STEADY, hrNote: HR_NOTE_PACED },
   },
   {
     weekNumber: 3,
     startDate: "2026-09-21",
-    tuesday: { label: "Extended Kms", type: "tempo", km: 5 },
-    friday: { label: "Easy Run", type: "easy", km: 3 },
-    sunday: { label: "Long Run", type: "long", km: 6 },
+    tuesday: {
+      label: "Extended Kms",
+      type: "tempo",
+      km: 5,
+      zone: ZONE_THRESHOLD,
+      hrNote: HR_NOTE_REPS,
+      steps: [
+        { run: 1000, effort: "conversational" },
+        { rest: 60 },
+        { run: 1000, pace: "6:05/km" },
+        { rest: 60 },
+        { run: 500, pace: "5:50/km" },
+        { rest: 60 },
+        { run: 1000, pace: "6:05/km" },
+        { rest: 60 },
+        { run: 500, pace: "5:50/km" },
+        { rest: 60 },
+        { run: 1000, effort: "conversational" },
+      ],
+      coach:
+        "First real threshold session of the block, and the paces are a step up from anything you have run since coming back — your quickest September kilometre averaged 6:33. Run the first 1km rep at 6:05 and see how it sits before committing to the second. If the 5:50 halves are falling apart, hold 6:00 and keep the rep count; finishing all four reps at a controlled pace beats hitting two and dying.",
+    },
+    friday: EASY_3KM(3),
+    sunday: {
+      label: "Long Run",
+      type: "long",
+      km: 6,
+      zone: ZONE_STEADY,
+      hrNote: HR_NOTE_PACED,
+      steps: [
+        { run: 1000, effort: "comfortable" },
+        { run: 5000, pace: "6:45/km" },
+      ],
+      coach:
+        "Worth knowing: this is the same prescription you ran on 20 September, where you averaged 6:42/km. You hit it almost exactly. The only change is an extra kilometre of comfortable running on the front, so treat the 5km block as a repeat of a session you have already proved you can execute.",
+    },
   },
   {
     weekNumber: 4,
     startDate: "2026-09-28",
-    tuesday: { label: "Mile Repeats", type: "intervals", km: 4 },
-    friday: { label: "Easy Run", type: "easy", km: 3 },
-    sunday: { label: "Long Run", type: "long", km: 5 },
+    tuesday: {
+      label: "Mile Repeats",
+      type: "intervals",
+      km: 4,
+      zone: ZONE_THRESHOLD,
+      hrNote: HR_NOTE_REPS,
+      steps: [
+        { run: 1600, effort: "conversational" },
+        { rest: 60 },
+        { run: 1600, pace: "6:15/km" },
+        { rest: 120 },
+        { run: 800, effort: "conversational" },
+      ],
+      coach:
+        "One long rep rather than several short ones, so the discipline is in the first 400m: 6:15/km will feel comfortable for two minutes and honest by the end. Go out at 6:20 and let it come to you rather than banking time early.",
+    },
+    friday: EASY_3KM(3),
+    sunday: {
+      label: "Long Run",
+      type: "long",
+      km: 5,
+      zone: ZONE_STEADY,
+      hrNote: HR_NOTE_PACED,
+      steps: [{ run: 5000, pace: "6:45/km" }],
+      coach:
+        "Down week, and Runna has dropped the warm-up kilometre — you start at 6:45/km from the first step. Give yourself a few minutes of walking beforehand so the opening kilometre is not the hardest one.",
+    },
   },
   {
     weekNumber: 5,
     startDate: "2026-10-05",
-    tuesday: { label: "Tempo 2k", type: "tempo", km: 5 },
-    friday: { label: "Easy Run", type: "easy", km: 4 },
-    sunday: { label: "Long Run", type: "long", km: 7 },
+    tuesday: {
+      label: "Tempo 2k",
+      type: "tempo",
+      km: 5,
+      zone: ZONE_THRESHOLD,
+      hrNote: HR_NOTE_REPS,
+      steps: [
+        { run: 2000, effort: "conversational" },
+        { run: 2000, pace: "6:05/km" },
+        { rest: 120 },
+        { run: 1000, effort: "conversational" },
+      ],
+      coach:
+        "Note there is no rest before the tempo block — you roll straight from the warm-up into 2km at 6:05/km. That continuous 2km is harder than the same pace broken into reps, so settle into rhythm in the first 200m rather than surging into it.",
+    },
+    friday: EASY_3KM(4),
+    sunday: {
+      label: "Long Run",
+      type: "long",
+      km: 7,
+      zone: ZONE_STEADY,
+      hrNote: HR_NOTE_PACED,
+      steps: [
+        { run: 1000, effort: "comfortable" },
+        { run: 5000, pace: "6:30/km" },
+        { run: 1000, effort: "comfortable" },
+      ],
+      coach:
+        "Same shape as week 3's long run but 15 seconds per kilometre quicker through the middle. The cool-down kilometre is part of the session, not optional — run it, don't stop at 6km.",
+    },
   },
   {
     weekNumber: 6,
     startDate: "2026-10-12",
-    tuesday: { label: "Progressive Mile Repeats", type: "intervals", km: 5 },
-    friday: { label: "Easy Run", type: "easy", km: 5 },
-    sunday: { label: "Long Run", type: "long", km: 8 },
+    tuesday: {
+      label: "Progressive Mile Repeats",
+      type: "intervals",
+      km: 5,
+      zone: ZONE_INTERVAL,
+      hrNote: HR_NOTE_REPS,
+      steps: [
+        { run: 1000, effort: "conversational" },
+        { rest: 90 },
+        { run: 400, pace: "6:45/km" },
+        { run: 400, pace: "6:15/km" },
+        { run: 400, pace: "6:00/km" },
+        { run: 400, pace: "5:45/km" },
+        { rest: 120 },
+        { run: 400, pace: "6:45/km" },
+        { run: 400, pace: "6:15/km" },
+        { run: 400, pace: "6:00/km" },
+        { run: 400, pace: "5:45/km" },
+        { rest: 120 },
+        { run: 800, effort: "conversational" },
+      ],
+      coach:
+        "Two continuous miles that get faster every 400m, with no break inside each mile. The trap is starting the 6:45 segment too quick and having nothing left for the 5:45 — that first quarter should feel almost slow. Getting the last 400m of each mile right is the whole session.",
+    },
+    friday: EASY_3KM(5),
+    sunday: {
+      label: "Long Run",
+      type: "long",
+      km: 8,
+      zone: ZONE_THRESHOLD,
+      hrNote: HR_NOTE_PACED,
+      steps: [
+        { run: 4000, pace: "6:40/km" },
+        { run: 4000, pace: "6:10/km" },
+      ],
+      coach:
+        "The biggest session of the block, and not really a long run — it is a progression run with a 4km finish at close to race pace, on the longest distance you will cover before the race. Do not let the first half creep under 6:40 because it feels easy; the session is won or lost in the second half.",
+    },
   },
   {
     weekNumber: 7,
     startDate: "2026-10-19",
-    tuesday: { label: "Shorter Intervals", type: "intervals", km: 6.2 },
-    friday: { label: "Easy Run", type: "easy", km: 3 },
-    sunday: { label: "Long Run", type: "long", km: 7 },
+    tuesday: {
+      label: "Shorter Intervals",
+      type: "intervals",
+      km: 6.2,
+      zone: ZONE_INTERVAL,
+      hrNote: HR_NOTE_REPS,
+      steps: [
+        { run: 1000, effort: "conversational" },
+        { rest: 60 },
+        { run: 800, pace: "5:40/km" },
+        { rest: 120 },
+        { run: 800, pace: "5:40/km" },
+        { rest: 120 },
+        { run: 400, pace: "5:25/km" },
+        { rest: 90 },
+        { run: 400, pace: "5:25/km" },
+        { rest: 90 },
+        { run: 400, pace: "5:25/km" },
+        { rest: 90 },
+        { run: 400, pace: "5:25/km" },
+        { rest: 150, },
+        { run: 200, pace: "5:10/km" },
+        { rest: 40 },
+        { run: 200, pace: "5:10/km" },
+        { rest: 40 },
+        { run: 200, pace: "5:10/km" },
+        { rest: 40 },
+        { run: 200, pace: "5:10/km" },
+        { rest: 40 },
+        { run: 200, pace: "5:10/km" },
+        { rest: 40 },
+        { run: 1000, effort: "conversational" },
+      ],
+      coach:
+        "Longest and fastest session of the block, and the only one where you touch 5:10/km. These are short reps, so the paces are less outlandish than they look next to your current 5km fitness — but if the 200s are not happening, hold 5:20 and keep all five rather than hitting two and stopping. Runna shows a 90-second and a 60-second break back to back before the 200s; treat that as one break of about two and a half minutes.",
+    },
+    friday: EASY_3KM(3),
+    sunday: {
+      label: "Long Run",
+      type: "long",
+      km: 7,
+      zone: ZONE_THRESHOLD,
+      hrNote: HR_NOTE_PACED,
+      steps: [
+        { run: 3000, pace: "6:30/km" },
+        { run: 2000, pace: "5:55/km" },
+        { run: 2000, pace: "6:30/km" },
+      ],
+      coach:
+        "A fast 2km sandwiched inside steady running, which is a harder ask than it reads — the last 2km back at 6:30 on tired legs is the part that matters. This is your dress rehearsal for holding form when the race gets uncomfortable.",
+    },
   },
   {
     weekNumber: 8,
     startDate: "2026-10-26",
-    tuesday: { label: "Race Pace Practice K's", type: "intervals", km: 5 },
-    friday: { label: "Easy Run", type: "easy", km: 3 },
-    sunday: { label: "8km Race", type: "race", km: 8 },
+    tuesday: {
+      label: "Race Pace Practice K's",
+      type: "intervals",
+      km: 5,
+      zone: ZONE_THRESHOLD,
+      hrNote: HR_NOTE_REPS,
+      steps: [
+        { run: 1000, effort: "conversational" },
+        { rest: 60 },
+        { run: 1000, pace: "6:10/km" },
+        { rest: 120 },
+        { run: 1000, pace: "6:10/km" },
+        { rest: 120 },
+        { run: 1000, pace: "6:10/km" },
+        { rest: 120 },
+        { run: 1000, effort: "conversational" },
+      ],
+      coach:
+        "This is the session that tells you your race pace. 6:10/km is what Runna is aiming you at for Sunday, which over 8km is about 49 minutes. Pay attention to how the third rep feels — if it is comfortable, 6:10 is right; if you are straining, start the race at 6:20 and earn the rest.",
+    },
+    friday: EASY_3KM(3),
+    sunday: {
+      label: "8km Race",
+      type: "race",
+      km: 8,
+      zone: ZONE_THRESHOLD,
+      hrNote:
+        "No heart-rate ceiling today. Expect Zone 3 early and Zone 4 through the back half — that is a correctly-run race.",
+      steps: [{ run: 8000, note: "Race" }],
+      coach:
+        "Warm up with about 10 minutes of easy jogging and a few short strides. Go out at the pace Tuesday told you, not faster — the first kilometre always feels too easy and that is exactly right. Hold it through the middle, then spend whatever is left over the last kilometre.",
+    },
   },
 ];
 
 const WEEK_FOCUS: Record<number, string> = {
   1: "Plan start — re-establishing the three-run rhythm.",
   2: "Second build week, first proper interval session.",
-  3: "Longest week so far — threshold work Tuesday, 6km long run Sunday.",
-  4: "Down week on volume. The quality session stays; the easy days get easier.",
-  5: "Biggest aerobic week yet — a continuous tempo block and a 7km long run.",
-  6: "Peak week. 8km long run, the longest of the block.",
-  7: "Sharpening — faster, shorter reps and a pull-back in long-run distance.",
-  8: "Race week. Everything taper; Sunday is the 8km.",
+  3: "Threshold work arrives: reps at 6:05 and 5:50, and a 6km paced long run.",
+  4: "Down week on volume. One long mile rep, and the long run drops back to 5km.",
+  5: "A continuous 2km tempo block and the long run quickens to 6:30/km.",
+  6: "Peak week. Progressive mile repeats and an 8km progression run finishing at 6:10/km.",
+  7: "Sharpening — the fastest reps of the block, down to 5:10/km.",
+  8: "Race week. Rehearse race pace Tuesday, then the 8km on Sunday.",
 };
 
 const RECOVERY_WEEKS = new Set([4, 8]);
@@ -191,108 +417,62 @@ function dayOfWeekName(dateStr: string): string {
   });
 }
 
-function zoneFor(session: RunnaSession): string {
-  switch (session.type) {
-    case "easy":
-      return ZONE_EASY;
-    case "long":
-      return ZONE_LONG;
-    case "tempo":
-      return ZONE_THRESHOLD;
-    case "intervals":
-      return ZONE_INTERVAL;
-    case "race":
-      return ZONE_RACE;
+/** Guards the transcription: every session's steps must sum to the PDF's headline distance. */
+function assertDistances(): void {
+  for (const week of RUNNA_WEEKS) {
+    for (const session of [week.tuesday, week.friday, week.sunday]) {
+      if (!session.steps) continue;
+      const summed = session.steps.filter(isRun).reduce((s, x) => s + x.run, 0);
+      const expected = Math.round(session.km * 1000);
+      if (summed !== expected) {
+        throw new Error(
+          `Week ${week.weekNumber} "${session.label}": steps sum to ${summed}m but the Runna overview says ${expected}m.`
+        );
+      }
+    }
   }
 }
 
-// ---------------------------------------------------------------------------
-// Session text. Quality sessions defer to Runna for the rep structure and
-// supply targets + execution coaching; easy and long runs are prescribed in
-// full, because those are the sessions the data says are going wrong.
-// ---------------------------------------------------------------------------
-
-const QUALITY_INTENT: Record<string, string> = {
-  "Drop Set": "Reps that get shorter as you go, each one a little quicker than the last.",
-  "On and Offs": "Alternating blocks of faster running and easy running, no standing recovery.",
-  "Extended Kms": "Long reps at a controlled, comfortably-hard effort — sustained, not sprinted.",
-  "Mile Repeats": "Two long reps at threshold effort with a jog between them.",
-  "Tempo 2k": "A continuous 2km block held at threshold, inside an easy warm-up and cool-down.",
-  "Progressive Mile Repeats": "Long reps where each one is slightly faster than the one before.",
-  "Shorter Intervals": "Short, fast reps with full recoveries — the quickest running of the block.",
-  "Race Pace Practice K's": "Reps at your intended 8km race pace, to rehearse the feel of it.",
-};
-
-function qualityText(week: RunnaWeek, session: RunnaSession): string {
-  const isVo2 = session.type === "intervals" && session.label === "Shorter Intervals";
-  const pace = isVo2 ? PACE_INTERVAL : PACE_THRESHOLD;
-  const zone = isVo2 ? "Zone 4-5, 172bpm and up on the reps" : "Zone 3-4, roughly 157-186bpm on the reps";
-
-  return [
-    `${PROVIDER} session: "${session.label}", ${session.km}km total. ${QUALITY_INTENT[session.label] ?? ""}`.trim(),
-    "",
-    `Run the rep structure exactly as the ${PROVIDER} app gives it to you — it has the reps and recoveries, and it is the source of truth for this session.`,
-    "",
-    `Your targets for it: ${zone}, around ${pace} on the fast sections. Recoveries should be a genuine jog or walk — let HR come back down before the next rep rather than rolling straight into it.`,
-    "",
-    "This is the one session in the week that is supposed to feel hard. Spend the effort here, and it buys you the right to run Friday and Sunday genuinely easy.",
-  ].join("\n");
+function formatRest(seconds: number): string {
+  return seconds >= 120 && seconds % 60 === 0 ? `${seconds / 60}min walking rest` : `${seconds}s walking rest`;
 }
 
-function easyText(session: RunnaSession): string {
-  return [
-    `Easy aerobic run, ${session.km}km continuous.`,
-    "",
-    `Target: Zone 1-2, HR under 156bpm, roughly ${PACE_EASY}.`,
-    EASY_DAY_RULE,
-    "",
-    "This one exists to add aerobic volume without adding fatigue. Running it at 6:50/km because it feels fine is how a three-run week turns into three hard days.",
-  ].join("\n");
+function formatDistance(meters: number): string {
+  return meters >= 1000 ? `${(meters / 1000).toFixed(meters % 1000 === 0 ? 0 : 1)}km` : `${meters}m`;
 }
 
-function longText(week: RunnaWeek, session: RunnaSession): string {
-  const lines = [
-    `Long run, ${session.km}km, easy and unhurried — time on feet, not pace.`,
-    "",
-    `Target: Zone 1-2, HR under 156bpm, roughly ${PACE_LONG}.`,
-    EASY_DAY_RULE,
-  ];
-  if (week.weekNumber === 3) {
-    lines.push(
+function renderSteps(steps: Step[]): string {
+  return steps
+    .map((step) => {
+      if (!isRun(step)) return `  - ${formatRest(step.rest)}`;
+      const target = step.pace
+        ? `at ${step.pace}`
+        : step.effort === "comfortable"
+          ? `at a comfortable pace (${CONVERSATIONAL_PACE})`
+          : step.effort === "conversational"
+            ? `at a conversational pace (${CONVERSATIONAL_PACE})`
+            : "";
+      return `  - ${formatDistance(step.run)} ${target}`.trimEnd();
+    })
+    .join("\n");
+}
+
+function sessionText(session: RunnaSession): string {
+  const parts: string[] = [];
+  parts.push(`${PROVIDER} session: "${session.label}", ${session.km}km total.`);
+
+  if (session.steps) {
+    parts.push("", renderSteps(session.steps));
+  } else {
+    parts.push(
       "",
-      "Specifically this week: your last two long runs averaged 158 and 164bpm — both Zone 3 for the whole run. Start the first kilometre slower than feels right, check HR at every kilometre, and let it be boring. Sunday being easy is what makes Tuesday possible."
+      `Rep detail for this week was not supplied — run it as Runna gives it to you in the app.`
     );
   }
-  if (week.weekNumber === 6) {
-    lines.push(
-      "",
-      "Longest run of the block. Take a walk break at the halfway point if you need one — finishing 8km controlled beats running 6km well and 2km badly."
-    );
-  }
-  return lines.join("\n");
-}
 
-function raceText(session: RunnaSession): string {
-  return [
-    `Race day — ${session.km}km.`,
-    "",
-    `Target: Zone 3-4. Go out at the pace you rehearsed on Tuesday of race week (around ${PACE_THRESHOLD}), not faster — the first kilometre always feels too easy, and that is correct.`,
-    "",
-    "Warm up with 10 minutes of easy jogging plus a few short strides. Then settle in, hold the effort through the middle, and spend whatever is left in the last kilometre.",
-  ].join("\n");
-}
-
-function runWorkoutText(week: RunnaWeek, session: RunnaSession): string {
-  switch (session.type) {
-    case "easy":
-      return easyText(session);
-    case "long":
-      return longText(week, session);
-    case "race":
-      return raceText(session);
-    default:
-      return qualityText(week, session);
-  }
+  parts.push("", session.hrNote);
+  if (session.coach) parts.push("", session.coach);
+  return parts.join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -478,7 +658,7 @@ function strengthWorkout(weekNumber: number, slot: "A" | "B"): PlanWorkoutJson {
     ? `Race week — mobility only, no loading. Nothing here should leave a trace in your legs on Sunday.\n\n${formatStrength(strength)}`
     : formatStrength(strength);
   return {
-    id: "", // assigned by buildWeek
+    id: "",
     sport: "strength",
     type: isTaperThursday ? "mobility" : "strength",
     name,
@@ -523,27 +703,15 @@ function buildWeek(week: RunnaWeek): { planWeek: PlanWeekJson; skeleton: Externa
     const workouts: PlanWorkoutJson[] = [];
     const sessions: ExternalSkeletonSession[] = [];
 
-    if (dayName === "Monday") {
-      workouts.push(strengthWorkout(week.weekNumber, "A"));
+    if (dayName === "Monday" || dayName === "Thursday") {
+      const slot = dayName === "Monday" ? "A" : "B";
+      const workout = strengthWorkout(week.weekNumber, slot);
+      workouts.push(workout);
       sessions.push({
         sport: "strength",
-        type: "strength",
-        label: `Full-Body Strength A (week ${week.weekNumber})`,
-        durationMinutes: 35,
-        primaryZone: ZONE_STRENGTH,
-        addedByApp: true,
-        note: "Runna prescribes rest from running here; the gym session is this app's addition.",
-      });
-    } else if (dayName === "Thursday") {
-      workouts.push(strengthWorkout(week.weekNumber, "B"));
-      sessions.push({
-        sport: "strength",
-        type: week.weekNumber === 8 ? "mobility" : "strength",
-        label:
-          week.weekNumber === 8
-            ? "Mobility & Activation (race week)"
-            : `Full-Body Strength B (week ${week.weekNumber})`,
-        durationMinutes: week.weekNumber === 8 ? 15 : 35,
+        type: workout.type,
+        label: workout.name,
+        durationMinutes: workout.durationMinutes,
         primaryZone: ZONE_STRENGTH,
         addedByApp: true,
         note: "Runna prescribes rest from running here; the gym session is this app's addition.",
@@ -551,8 +719,7 @@ function buildWeek(week: RunnaWeek): { planWeek: PlanWeekJson; skeleton: Externa
     } else if (dayName === "Tuesday" || dayName === "Friday" || dayName === "Sunday") {
       const session =
         dayName === "Tuesday" ? week.tuesday : dayName === "Friday" ? week.friday : week.sunday;
-      const zone = zoneFor(session);
-      const text = runWorkoutText(week, session);
+      const text = sessionText(session);
       workouts.push({
         id: "",
         sport: "run",
@@ -560,7 +727,7 @@ function buildWeek(week: RunnaWeek): { planWeek: PlanWeekJson; skeleton: Externa
         name: session.type === "race" ? session.label : `${session.label} (${PROVIDER})`,
         description: text,
         distanceMeters: Math.round(session.km * 1000),
-        primaryZone: zone,
+        primaryZone: session.zone,
         humanReadable: text,
         completed: false,
       });
@@ -569,8 +736,10 @@ function buildWeek(week: RunnaWeek): { planWeek: PlanWeekJson; skeleton: Externa
         type: session.type,
         label: session.label,
         distanceMeters: Math.round(session.km * 1000),
-        primaryZone: zone,
-        note: `${PROVIDER} prescribes this session; distance and type are fixed.`,
+        primaryZone: session.zone,
+        note: session.steps
+          ? `${PROVIDER} prescribes this session; day, distance, rep structure and paces are fixed.`
+          : `${PROVIDER} prescribes this session; rep detail was not supplied for this week.`,
       });
     } else {
       const note = REST_NOTES[dayName] ?? "Full rest.";
@@ -592,7 +761,7 @@ function buildWeek(week: RunnaWeek): { planWeek: PlanWeekJson; skeleton: Externa
     endDate,
     phase: phaseForWeek(week.weekNumber),
     focus: WEEK_FOCUS[week.weekNumber],
-    targetHours: Math.round(((runKm * 7.3) / 60 + 2 * 0.58) * 10) / 10,
+    targetHours: Math.round(((runKm * 7.2) / 60 + 2 * 0.58) * 10) / 10,
     isRecoveryWeek: RECOVERY_WEEKS.has(week.weekNumber),
     days,
   };
@@ -612,14 +781,20 @@ function buildWeek(week: RunnaWeek): { planWeek: PlanWeekJson; skeleton: Externa
 
 // ---------------------------------------------------------------------------
 
-const RATIONALE = `Rebuilt from scratch against the Runna "8 Week Functional Fitness Plan" you started on 7 September, which this app knew nothing about. Until now it believed you were restarting from a nine-week layoff, so it was prescribing 2.5km run/walk intervals under a 156bpm ceiling while you were out running Runna's sessions — it scored every one of those as a missed workout plus a Zone 3 drift, and cut your volume another 35% on Sunday in response. Runna now owns the structure through race day on 1 November and the Sunday job can no longer overwrite it.
+const RATIONALE = `Rebuilt against the Runna "8 Week Functional Fitness Plan" you started on 7 September, now including Runna's rep-by-rep detail for weeks 3 to 8. Until this import the app knew nothing about that plan: it believed you were restarting from a nine-week layoff, so it prescribed 2.5km run/walk intervals under a 156bpm ceiling, scored every Runna session as a missed workout plus a Zone 3 drift, and cut your volume a further 35% in response. Runna now owns the structure through race day on 1 November and the Sunday job can no longer overwrite it.
 
-What the Strava data from the last fortnight actually says: you have run five of the six sessions Runna prescribed, missing only Friday 18 September. Cadence has climbed from 73 to 77 across those runs, which is a real improvement. The problem is intensity distribution — your two long runs averaged 158 and 164bpm, both squarely Zone 3, and the metrics pipeline has been returning intensity factors above 1.0 on runs labelled easy. With Runna now adding a genuine hard session every Tuesday, running Friday and Sunday at that effort too would give you three hard days a week, which is how this block ends early.
+The rep detail corrected something this app had wrong, and had had wrong for weeks. Runna's Sunday sessions are not easy runs — they are paced. Week 3 asks for 5km at 6:45/km, week 6 for a progression run finishing 4km at 6:10/km. Your 20 September long run averaged 6:42/km at 164bpm, which the app flagged as a Zone 3 drift needing correction. It was not drift. It was the prescription, executed almost exactly. The same is true of 13 September. Both sessions have been re-assessed against what was actually asked of you.
 
-So the structure is Runna's and the coaching is the correction: every easy and long run carries a hard 156bpm ceiling and an explicit instruction to walk it back down, and the Tuesday session is where the effort is meant to go. Gym stays on Monday and Thursday, same movement patterns throughout, progressing by adding a round rather than load, dropping to mobility only in race week.`;
+So the Zone 2 ceiling now applies only where Runna genuinely asks for conversational running: the Friday easy runs, and the warm-up and cool-down segments inside the quality sessions. Everywhere else the target is Runna's pace and heart rate is the read-out rather than the limit, with expected ranges estimated from your own September runs rather than the stale pace table.
+
+What the data does say: you have completed five of the six prescribed sessions, missing only Friday 18 September, and cadence has climbed from 73 to 77 spm. The thing worth watching is not intensity discipline but the pace step-up — Runna is asking for 6:05/km reps this week and 5:10/km in week 7, against a quickest September kilometre of 6:33. Each quality session below says what to do if the prescribed pace is not there on the day, which in every case is to hold the rep count and give up the pace, not the reverse.
+
+Gym stays on Monday and Thursday, same movement patterns throughout, progressing by adding a round rather than load, dropping to mobility only in race week.`;
 
 async function main() {
-  // ---- Validate every exercise name against the Garmin catalog up front.
+  assertDistances();
+  console.log("Verified every session's steps against the Runna overview distances.");
+
   const allExercises = await getAllExercises();
   const known = new Set(allExercises.map((e) => e.name));
   const used = new Set<string>();
@@ -636,7 +811,6 @@ async function main() {
   }
   console.log(`Validated ${used.size} exercise names against the Garmin catalog.`);
 
-  // ---- Build the plan document.
   const built = RUNNA_WEEKS.map(buildWeek);
   const weeks = built.map((b) => b.planWeek);
   const skeleton = built.map((b) => b.skeleton);
@@ -648,15 +822,10 @@ async function main() {
     .orderBy(desc(zoneVersions.asOfDate))
     .limit(1);
 
-  const [previous] = await db
-    .select()
-    .from(plans)
-    .where(eq(plans.isActive, true))
-    .limit(1);
+  const [previous] = await db.select().from(plans).where(eq(plans.isActive, true)).limit(1);
   if (!previous) throw new Error("No active plan to supersede — is the DB seeded?");
   const previousJson = previous.planJson as PlanDocument;
 
-  // ---- Mark weeks 1-2 against what actually happened on Strava.
   const done = await db
     .select()
     .from(activities)
@@ -715,41 +884,39 @@ async function main() {
         weeklyVolume: { total: 12, run: 12 },
         longestSessions: { run: 5 },
         consistency:
-          "Back to running three times a week since 2026-09-07 on a Runna plan. Five of six prescribed sessions completed in the first two weeks (missed Friday 2026-09-18). Cadence improving, 73 to 77 spm. CTL ~13.6, ACWR ~1.18 as of 2026-09-20.",
+          "Back to running three times a week since 2026-09-07 on a Runna plan. Five of six prescribed sessions completed in the first two weeks (missed Friday 2026-09-18). Long runs executed on prescribed pace: 2026-09-20 asked for ~6:45/km and ran 6:42/km. Cadence improving, 73 to 77 spm. CTL ~13.6, ACWR ~1.18 as of 2026-09-20.",
       },
       strengths: [
         {
           sport: "run",
           evidence:
-            "Five of six Runna sessions completed in the first fortnight back — the three-runs-a-week habit is holding.",
+            "Five of six Runna sessions completed in the first fortnight back, and the paced long runs hit their targets almost exactly.",
         },
-        {
-          sport: "run",
-          evidence: "Cadence rose from 73 to 77 spm across the first two weeks of the block.",
-        },
+        { sport: "run", evidence: "Cadence rose from 73 to 77 spm across the first two weeks of the block." },
       ],
       limiters: [
         {
           sport: "run",
           evidence:
-            "Easy and long runs are being run at Zone 3 effort — 2026-09-13 averaged 158bpm and 2026-09-20 averaged 164bpm, both prescribed easy. With a hard Runna session every Tuesday this is the main risk in the block.",
+            "Runna's prescribed paces step up sharply through the block — 6:05/km reps in week 3 and 5:10/km in week 7, against a quickest September kilometre of 6:33/km. Pace, not intensity discipline, is the risk to manage.",
         },
         {
           sport: "run",
           evidence:
-            "Pace zones derive from a 35:00 5K that predates the layoff and are stale — the metrics pipeline returns intensity factors above 1.0 on easy runs. HR is the authoritative target until a fresh time trial or a qualifying effort updates them.",
+            "Pace zones derive from a 35:00 5K predating the layoff and are stale — they classify Runna's prescribed rep paces as Zone 5 and beyond. Unusable for prescription until a fresh time trial or qualifying effort updates them.",
         },
         {
           sport: "run",
           evidence:
-            "Strava history shows a lower-leg (shin) issue and recovery block in Aug 2025 — a reason to hold the easy days genuinely easy rather than to cut Runna's volume.",
+            "Strava history shows a lower-leg (shin) issue and recovery block in Aug 2025 — a reason to hold the Friday easy run genuinely easy, since it is now the only easy running in the week.",
         },
       ],
       constraints: [
         "Running days are fixed by Runna: Tuesday (quality), Friday (easy), Sunday (long).",
         "Gym on Monday and Thursday — this app's addition, on Runna's rest-from-running days.",
-        "Race: 8km on 2026-11-01.",
-        "Runna owns session structure and distance; this app owns pacing, HR targets, strength and commentary.",
+        "Race: 8km on 2026-11-01, target pace ~6:10/km per week 8's race-pace session.",
+        "Runna owns session structure, distance and pace; this app owns heart-rate context, execution coaching, strength and commentary.",
+        "Only the Friday easy runs and the warm-up/cool-down segments are genuinely Zone 2 — the Sunday long runs are paced sessions, not easy runs.",
       ],
     },
     zones: currentZones
@@ -761,10 +928,10 @@ async function main() {
               zones: currentZones.hrZones as PlanDocument["zones"]["run"]["hr"]["zones"],
             },
             pace: {
-              source: `${currentZones.source} — STALE, derived from a 35:00 5K predating the 2026 layoff. Prescribe by HR.`,
+              source: `${currentZones.source} — STALE, derived from a 35:00 5K predating the 2026 layoff. Runna's prescribed paces supersede it.`,
               zones: currentZones.paceZones as PlanDocument["zones"]["run"]["pace"]["zones"],
             },
-            note: "HRmax 195 is athlete-provided and exact, so HR zones are authoritative. Pace guidance in session text comes from observed 2026-09 running, not from the stale pace table.",
+            note: "HRmax 195 is athlete-provided and exact, so HR zones are sound. The pace table is not: it classifies Runna's prescribed rep paces as Zone 5+. Prescribe to Runna's paces and read HR as a result, except on conversational running where the 156bpm ceiling applies.",
           },
         }
       : previousJson.zones,
@@ -774,7 +941,7 @@ async function main() {
       importedAt: IMPORTED_AT,
       sourceDocument: SOURCE_DOCUMENT,
       note:
-        "Structure (day, session type, distance) is fixed by Runna through race day. The Sunday regeneration job may only write pacing, HR targets, strength detail and rationale on top of it. The PDF gives Runna's session names and headline distances but not rep-by-rep detail, so quality sessions defer to the Runna app for exact reps.",
+        "Structure and paces (day, session, distance, rep breakdown, target pace) are fixed by Runna through race day. The Sunday regeneration job may only write heart-rate context, execution coaching, strength detail and rationale on top. Weeks 1-2 carry grid-level detail only; weeks 3-8 carry Runna's full rep breakdown.",
       weeks: skeleton,
     },
     phases: [
@@ -789,21 +956,21 @@ async function main() {
         name: "build",
         startWeek: 3,
         endWeek: 5,
-        focus: "Add threshold work and build the long run, while forcing the easy days genuinely easy.",
+        focus: "Introduce threshold reps and lift the long run from 6:45/km toward 6:30/km.",
         keyWorkouts: ["Extended Kms", "Mile Repeats", "Tempo 2k"],
       },
       {
         name: "peak",
         startWeek: 6,
         endWeek: 7,
-        focus: "Peak long run, then sharpen with faster, shorter reps.",
-        keyWorkouts: ["Progressive Mile Repeats", "Shorter Intervals"],
+        focus: "Peak volume and the fastest running of the block, down to 5:10/km.",
+        keyWorkouts: ["Progressive Mile Repeats", "8km progression run", "Shorter Intervals"],
       },
       {
         name: "taper",
         startWeek: 8,
         endWeek: 8,
-        focus: "Taper into the 8km race on 1 November.",
+        focus: "Rehearse 6:10/km race pace, then race the 8km on 1 November.",
         keyWorkouts: ["Race Pace Practice K's", "8km Race"],
       },
     ],
@@ -819,7 +986,8 @@ async function main() {
   );
 
   if (DRY_RUN) {
-    console.log("--dry-run: nothing written.");
+    console.log("--dry-run: nothing written.\n");
+    console.log(flattened.find((r) => r.date === "2026-09-22")?.humanReadable);
     process.exit(0);
   }
 
@@ -828,7 +996,7 @@ async function main() {
     .insert(plans)
     .values({
       version: newVersion,
-      weekStartDate: "2026-09-21", // the first week this plan takes effect for
+      weekStartDate: "2026-09-21",
       source: "manual",
       rationale: RATIONALE,
       guardrailsApplied: {
