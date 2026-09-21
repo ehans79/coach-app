@@ -16,7 +16,7 @@ import { HeroVerdict } from "@/components/HeroVerdict";
 import { HrGapDecouplingChart } from "@/components/charts/HrGapDecouplingChart";
 import { IntervalRepsChart } from "@/components/charts/IntervalRepsChart";
 import { ZoneDistributionPanel } from "@/components/ZoneDistributionPanel";
-import { formatKm, formatDuration, formatPace } from "@/lib/format";
+import { formatCadence, formatDuration, formatKm, formatPace } from "@/lib/format";
 
 function formatDate(d: Date): string {
   return d.toLocaleDateString("en-GB", {
@@ -98,7 +98,7 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
         {activity.averageCadence != null && (
           <StatTile
             label="Cadence"
-            value={`${Math.round(activity.averageCadence)}`}
+            value={formatCadence(activity.averageCadence, activity.sportType)}
             detail={
               facts?.cadence.deltaVsRollingAverage != null
                 ? `${facts.cadence.deltaVsRollingAverage > 0 ? "+" : ""}${facts.cadence.deltaVsRollingAverage} vs rolling avg`

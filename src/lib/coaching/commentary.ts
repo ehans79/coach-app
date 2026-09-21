@@ -6,6 +6,7 @@ import type { StravaStreamSet } from "@/lib/strava/types";
 import { getCurrentHrZones, computeZoneTimeDistribution, assessZoneAdherence } from "./zones";
 import { extractStreamArrays, computeCadenceFade, computePaceFade } from "./streams";
 import { getRollingAverageCadence } from "./history";
+import { toStepsPerMinute } from "@/lib/format";
 import { findMatchingPlanWorkout, localDateOf } from "./matching";
 import { getWeatherAtActivityStart, type WeatherSnapshot } from "@/lib/weather/openMeteo";
 import { generateText } from "@/lib/llm/anthropic";
@@ -36,7 +37,9 @@ function determineFlag(
   // Documented thresholds from the sports-science reference doc, not arbitrary.
   if (decouplingPercent != null && decouplingPercent > 10) return "watch";
   if (acwr != null && acwr > 1.5) return "watch";
-  if (cadenceDelta != null && cadenceDelta < -5) return "watch";
+  // Steps per minute, so -10 here is the same real-world drop the old per-leg
+  // threshold of -5 encoded before cadence was converted at this boundary.
+  if (cadenceDelta != null && cadenceDelta < -10) return "watch";
   if (cadenceFade != null && cadenceFade.fadePercent < -5) return "watch";
   return "none";
 }
@@ -45,7 +48,7 @@ const COMMENTARY_SYSTEM_PROMPT = `You are Edu's personal running coach, writing 
 
 Style: direct, warm, specific — like a coach who actually looked at the data, not a generic fitness-app notification. 2-4 sentences. Metric units only (km, min:sec/km, °C) — never miles, feet, °F, or lbs.
 
-You'll be given structured facts about the run — vs. what was prescribed (if anything), heart-rate zone adherence, cadence relative to Edu's own recent average, pace fade across the run, and weather. A zone_adherence and flag verdict have already been computed by the app; your job is to explain WHY in natural coach language, not to second-guess the verdict.
+You'll be given structured facts about the run — vs. what was prescribed (if anything), heart-rate zone adherence, cadence relative to Edu's own recent average, pace fade across the run, and weather. All cadence figures are steps per minute counting both feet, the same number Strava and Garmin display. A zone_adherence and flag verdict have already been computed by the app; your job is to explain WHY in natural coach language, not to second-guess the verdict.
 
 - If flag is "correct": give one concrete, short correction or reminder for next time.
 - If flag is "watch": note what to keep an eye on, without being alarmist.
@@ -96,6 +99,8 @@ export interface CommentaryFacts {
     distributionPercent: Record<string, number>;
     percentAboveTarget: number;
   };
+  /** Steps per minute (both feet), as Strava and Garmin display it — not the
+   * per-leg value Strava's API returns. See toStepsPerMinute in lib/format. */
   cadence: {
     current: number | null;
     rollingAverage: number | null;
@@ -209,6 +214,7 @@ function buildFacts(
   activity: typeof activities.$inferSelect,
   matchedWorkout: Awaited<ReturnType<typeof findMatchingPlanWorkout>>,
   zoneAssessment: ZoneAdherenceAssessment,
+  cadenceSpm: number | null,
   rollingCadence: number | null,
   cadenceFade: CadenceFade | null,
   paceFade: PaceFade | null,
@@ -237,7 +243,7 @@ function buildFacts(
       avgPace: formatPace(avgPaceSecPerKm),
       averageHeartrate: activity.averageHeartrate,
       maxHeartrate: activity.maxHeartrate,
-      averageCadence: activity.averageCadence,
+      averageCadence: cadenceSpm,
       sufferScore: activity.sufferScore,
     },
     prescription: matchedWorkout
@@ -255,11 +261,11 @@ function buildFacts(
       percentAboveTarget: Math.round(zoneAssessment.percentAboveTarget * 10) / 10,
     },
     cadence: {
-      current: activity.averageCadence,
+      current: cadenceSpm != null ? Math.round(cadenceSpm * 10) / 10 : null,
       rollingAverage: rollingCadence != null ? Math.round(rollingCadence * 10) / 10 : null,
       deltaVsRollingAverage:
-        activity.averageCadence != null && rollingCadence != null
-          ? Math.round((activity.averageCadence - rollingCadence) * 10) / 10
+        cadenceSpm != null && rollingCadence != null
+          ? Math.round((cadenceSpm - rollingCadence) * 10) / 10
           : null,
       secondHalfVsFirstHalfPercent: cadenceFade ? Math.round(cadenceFade.fadePercent * 10) / 10 : null,
     },
@@ -328,11 +334,17 @@ export async function generateCommentaryForActivity(activityId: number): Promise
   const matchedWorkout = await findMatchingPlanWorkout(activity.startDateLocal);
   const zoneAssessment = assessZoneAdherence(distribution, matchedWorkout?.primaryZone);
 
-  const rollingCadence = await getRollingAverageCadence(activityId);
+  // Strava's API hands back per-leg cadence for runs; everything downstream of
+  // here — the flag threshold, the facts given to the model, the stored column
+  // and the dashboard tile — works in steps per minute so it agrees with what
+  // Strava and Garmin show. Storage on `activities` stays raw.
+  const cadenceSpm = toStepsPerMinute(activity.averageCadence, activity.sportType);
+  const rollingCadenceSpm = toStepsPerMinute(
+    await getRollingAverageCadence(activityId),
+    "Run" // the rolling baseline is runs-only by construction
+  );
   const cadenceDelta =
-    activity.averageCadence != null && rollingCadence != null
-      ? activity.averageCadence - rollingCadence
-      : null;
+    cadenceSpm != null && rollingCadenceSpm != null ? cadenceSpm - rollingCadenceSpm : null;
   const cadenceFade = computeCadenceFade(streamData);
   const paceFade = computePaceFade(streamData);
 
@@ -394,7 +406,8 @@ export async function generateCommentaryForActivity(activityId: number): Promise
     activity,
     matchedWorkout,
     zoneAssessment,
-    rollingCadence,
+    cadenceSpm,
+    rollingCadenceSpm,
     cadenceFade,
     paceFade,
     weather,
@@ -420,7 +433,7 @@ export async function generateCommentaryForActivity(activityId: number): Promise
     commentText,
     zoneAdherence: zoneAssessment.adherence,
     flag,
-    cadenceAvg: activity.averageCadence,
+    cadenceAvg: cadenceSpm, // steps per minute, matching the facts and the dashboard
     cadenceDeltaVsRolling: cadenceDelta,
     weatherTempC: weather?.tempC ?? null,
     weatherConditions: weather?.conditions ?? null,

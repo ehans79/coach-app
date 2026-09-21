@@ -787,7 +787,7 @@ The rep detail corrected something this app had wrong, and had had wrong for wee
 
 So the Zone 2 ceiling now applies only where Runna genuinely asks for conversational running: the Friday easy runs, and the warm-up and cool-down segments inside the quality sessions. Everywhere else the target is Runna's pace and heart rate is the read-out rather than the limit, with expected ranges estimated from your own September runs rather than the stale pace table.
 
-What the data does say: you have completed five of the six prescribed sessions, missing only Friday 18 September, and cadence has climbed from 73 to 77 spm. The thing worth watching is not intensity discipline but the pace step-up — Runna is asking for 6:05/km reps this week and 5:10/km in week 7, against a quickest September kilometre of 6:33. Each quality session below says what to do if the prescribed pace is not there on the day, which in every case is to hold the rep count and give up the pace, not the reverse.
+What the data does say: you have completed five of the six prescribed sessions, missing only Friday 18 September, and cadence has climbed from 146 to 154 spm. The thing worth watching is not intensity discipline but the pace step-up — Runna is asking for 6:05/km reps this week and 5:10/km in week 7, against a quickest September kilometre of 6:33. Each quality session below says what to do if the prescribed pace is not there on the day, which in every case is to hold the rep count and give up the pace, not the reverse.
 
 Gym stays on Monday and Thursday, same movement patterns throughout, progressing by adding a round rather than load, dropping to mobility only in race week.`;
 
@@ -884,7 +884,7 @@ async function main() {
         weeklyVolume: { total: 12, run: 12 },
         longestSessions: { run: 5 },
         consistency:
-          "Back to running three times a week since 2026-09-07 on a Runna plan. Five of six prescribed sessions completed in the first two weeks (missed Friday 2026-09-18). Long runs executed on prescribed pace: 2026-09-20 asked for ~6:45/km and ran 6:42/km. Cadence improving, 73 to 77 spm. CTL ~13.6, ACWR ~1.18 as of 2026-09-20.",
+          "Back to running three times a week since 2026-09-07 on a Runna plan. Five of six prescribed sessions completed in the first two weeks (missed Friday 2026-09-18). Long runs executed on prescribed pace: 2026-09-20 asked for ~6:45/km and ran 6:42/km. Cadence improving, 146 to 154 spm. CTL ~13.6, ACWR ~1.18 as of 2026-09-20.",
       },
       strengths: [
         {
@@ -892,7 +892,7 @@ async function main() {
           evidence:
             "Five of six Runna sessions completed in the first fortnight back, and the paced long runs hit their targets almost exactly.",
         },
-        { sport: "run", evidence: "Cadence rose from 73 to 77 spm across the first two weeks of the block." },
+        { sport: "run", evidence: "Cadence rose from 146 to 154 spm across the first two weeks of the block." },
       ],
       limiters: [
         {

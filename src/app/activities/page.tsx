@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { Badge, flagToBadge, adherenceToBadge } from "@/components/Badge";
-import { formatKm, formatDuration, formatTempC } from "@/lib/format";
+import { formatCadence, formatDuration, formatKm, formatTempC } from "@/lib/format";
 
 function formatDate(d: Date): string {
   return d.toLocaleDateString("en-GB", { weekday: "short", month: "short", day: "numeric" });
@@ -35,7 +35,7 @@ export default async function ActivityFeedPage() {
                       {a.distanceMeters != null && <span>{formatKm(a.distanceMeters)}</span>}
                       {a.movingTimeSeconds != null && <span>{formatDuration(a.movingTimeSeconds)}</span>}
                       {a.averageHeartrate != null && <span>{Math.round(a.averageHeartrate)}bpm avg</span>}
-                      {a.averageCadence != null && <span>{Math.round(a.averageCadence)} cadence</span>}
+                      {a.averageCadence != null && <span>{formatCadence(a.averageCadence, a.sportType)} cadence</span>}
                       {a.comment?.weatherTempC != null && (
                         <span>
                           {formatTempC(a.comment.weatherTempC)}

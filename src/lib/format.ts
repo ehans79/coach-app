@@ -48,3 +48,54 @@ export function formatTempC(tempC: number | null | undefined): string {
   if (tempC == null) return "—";
   return `${Math.round(tempC)}°C`;
 }
+
+// ---------------------------------------------------------------------------
+// Cadence
+//
+// Strava's REST API reports running cadence per leg (revolutions per minute,
+// typically 67-85 here), while Strava's own UI, Garmin, and every coaching
+// convention quote steps per minute counting both feet. Storage keeps Strava's
+// raw value so a re-sync stays idempotent and the row always matches the
+// source; the doubling happens at the presentation boundary instead — here,
+// and in the facts handed to the commentary model so its prose agrees with the
+// tiles.
+//
+// The doubling is sport-dependent and must stay that way: cycling cadence is
+// already crank RPM in the API and is displayed undoubled everywhere, so
+// doubling a ride would invent a number. Runs, walks and hikes are per-leg.
+// ---------------------------------------------------------------------------
+
+const PER_LEG_CADENCE_SPORTS = new Set([
+  "Run",
+  "TrailRun",
+  "VirtualRun",
+  "Walk",
+  "Hike",
+]);
+
+/** True when Strava reports this sport's cadence per leg, so display must double it. */
+export function cadenceIsPerLeg(sportType: string | null | undefined): boolean {
+  return sportType != null && PER_LEG_CADENCE_SPORTS.has(sportType);
+}
+
+/**
+ * Strava's stored cadence -> steps per minute, matching what Strava and Garmin
+ * show. Non-per-leg sports (cycling) pass through unchanged.
+ */
+export function toStepsPerMinute(
+  cadence: number | null | undefined,
+  sportType: string | null | undefined
+): number | null {
+  if (cadence == null) return null;
+  return cadenceIsPerLeg(sportType) ? cadence * 2 : cadence;
+}
+
+/** Stored cadence -> "154spm" (or "88rpm" for cycling). */
+export function formatCadence(
+  cadence: number | null | undefined,
+  sportType: string | null | undefined
+): string {
+  const value = toStepsPerMinute(cadence, sportType);
+  if (value == null) return "—";
+  return `${Math.round(value)}${cadenceIsPerLeg(sportType) ? "spm" : "rpm"}`;
+}
