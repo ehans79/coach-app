@@ -6,6 +6,7 @@ import { findUnmatchedActivityIds, matchAndMarkCompletion } from "@/lib/coaching
 import { computeMetricsForActivity, findUnmetricatedRunActivityIds } from "@/lib/metrics/pipeline";
 import { computeDailyRollup } from "@/lib/metrics/rollup";
 import { reconcileVdotIntoZones } from "@/lib/metrics/qualifyingEfforts";
+import { isPaused } from "@/lib/pause";
 
 /**
  * Fallback poll target — hit on an hourly Railway cron schedule (separate
@@ -19,6 +20,13 @@ export async function POST(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${env.INTERNAL_API_TOKEN}`) {
     return new NextResponse("Unauthorized", { status: 401 });
+  }
+
+  // Checked after auth so a hold doesn't turn this into an unauthenticated
+  // probe for whether the app exists. 200 rather than 503: the hourly cron
+  // curl should read as a clean no-op, not as an outage.
+  if (isPaused()) {
+    return NextResponse.json({ paused: true });
   }
 
   const syncResult = await syncRecentActivities();

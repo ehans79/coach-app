@@ -12,6 +12,7 @@ import { refitCriticalPower } from "../src/lib/metrics/criticalPower";
 import { regeneratePlanForNextWeek, PlanNotStartedYetError } from "../src/lib/coaching/regeneration";
 import { generateCoachsRead } from "../src/lib/coaching/coachsRead";
 import { sendWeeklyDebrief } from "../src/lib/email/sendWeeklyDebrief";
+import { isPaused } from "../src/lib/pause";
 
 /**
  * Entrypoint for the Railway `cron-weekly` service — runs Sunday evening.
@@ -22,6 +23,11 @@ import { sendWeeklyDebrief } from "../src/lib/email/sendWeeklyDebrief";
  * the brief.
  */
 async function main() {
+  if (isPaused()) {
+    console.log("COACH_PAUSED is set — skipping the whole weekly job: no sync, no plan regeneration, no debrief email.");
+    process.exit(0);
+  }
+
   console.log("Syncing recent activities...");
   const syncResult = await syncRecentActivities();
   console.log(`Synced ${syncResult.count} activities.`);

@@ -8,6 +8,7 @@ import { generateCommentaryForActivity } from "@/lib/coaching/commentary";
 import { matchAndMarkCompletion } from "@/lib/coaching/matching";
 import { computeMetricsForActivity } from "@/lib/metrics/pipeline";
 import { reconcileVdotIntoZones } from "@/lib/metrics/qualifyingEfforts";
+import { isPaused } from "@/lib/pause";
 
 interface StravaWebhookEvent {
   aspect_type: "create" | "update" | "delete";
@@ -43,6 +44,15 @@ export async function GET(request: NextRequest) {
  * commentary generation in `after()`, off the response path.
  */
 export async function POST(request: NextRequest) {
+  // On hold: ack so Strava doesn't retry the delivery or disable the
+  // subscription, but write nothing. A hold normally deletes the subscription
+  // outright — this is the backstop for a replayed delivery, or for a
+  // subscription re-created before the hold is actually lifted.
+  if (isPaused()) {
+    console.log("COACH_PAUSED is set — acking and discarding a Strava webhook delivery.");
+    return NextResponse.json({});
+  }
+
   const event = (await request.json()) as StravaWebhookEvent;
 
   if (event.object_type === "activity") {

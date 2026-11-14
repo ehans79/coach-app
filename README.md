@@ -139,3 +139,38 @@ db:migrate && npm run db:seed`), then visit `/connect/strava?token=...` on
 the deployed `web` URL to authorize, then register the Strava webhook
 subscription (one-time setup script, added alongside the commentary
 feature) pointed at `${APP_BASE_URL}/api/webhooks/strava`.
+
+## Putting the app on hold
+
+For an off-season break — a gym block over winter, say — the app can be made
+inert without deleting anything. The history stays browsable at its URL; it
+just stops growing, and Postgres keeps every row for when training resumes.
+
+Three things write to the database, and a hold has to cover all three:
+
+1. **The Strava push subscription**, which fires on every upload — including
+   `WeightTraining` and `Ride`, not just runs. Delete it with
+   `deletePushSubscription(<id>)` from `src/lib/strava/client.ts` (list the
+   ids with `listPushSubscriptions()`). This is the one that matters most in a
+   gym block: left live, it syncs every session, matches it against a running
+   plan that no longer applies, and spends Anthropic tokens commenting on it.
+2. **`cron-fallback-poll`**, hourly — which writes a daily-load rollup on
+   every run even when nothing new has synced.
+3. **`cron-weekly`**, Sundays — which writes a new plan version, a coach's
+   read, and emails the debrief.
+
+Set `COACH_PAUSED=true` on `coach-app` and `cron-weekly` to neutralize 2 and 3
+in code (`src/lib/pause.ts`); `cron-fallback-poll` needs no variable of its
+own, since it only curls the web service's now-paused sync endpoint. Stopping
+the two cron services in Railway as well — remove the active deployment, don't
+clear the schedule field, which converts a cron service into an always-on one
+— saves the wake-ups, but the variable is what guarantees nothing writes if a
+cron is later redeployed.
+
+Coming back: unset `COACH_PAUSED`, re-create the subscription with
+`npm run webhook:setup`, redeploy the cron services if their deployments were
+removed, and backfill the gap with `npm run strava:backfill -- <YYYY-MM-DD>`.
+Note that the Sunday job keeps authoring its own weeks once an external plan's
+skeleton runs out, so a long hold is also the moment to decide what plan it
+should pick up again — importing a fresh Runna block rather than extending a
+finished one.

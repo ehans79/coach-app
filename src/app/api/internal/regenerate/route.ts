@@ -3,6 +3,7 @@ import { getEnv } from "@/lib/env";
 import { regeneratePlanForNextWeek } from "@/lib/coaching/regeneration";
 import { generateCoachsRead, type CoachsRead } from "@/lib/coaching/coachsRead";
 import { sendWeeklyDebrief } from "@/lib/email/sendWeeklyDebrief";
+import { isPaused } from "@/lib/pause";
 
 /**
  * Manual/test trigger for plan regeneration — the Sunday cron job normally
@@ -21,6 +22,10 @@ export async function POST(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${env.INTERNAL_API_TOKEN}`) {
     return new NextResponse("Unauthorized", { status: 401 });
+  }
+
+  if (isPaused()) {
+    return NextResponse.json({ paused: true });
   }
 
   const body = await request.json().catch(() => ({}));
