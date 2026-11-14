@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
-  if (isPaused()) {
+  if (await isPaused()) {
     return NextResponse.json({ paused: true });
   }
 

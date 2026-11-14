@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   // Checked after auth so a hold doesn't turn this into an unauthenticated
   // probe for whether the app exists. 200 rather than 503: the hourly cron
   // curl should read as a clean no-op, not as an outage.
-  if (isPaused()) {
+  if (await isPaused()) {
     return NextResponse.json({ paused: true });
   }
 

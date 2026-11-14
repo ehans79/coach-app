@@ -142,35 +142,47 @@ feature) pointed at `${APP_BASE_URL}/api/webhooks/strava`.
 
 ## Putting the app on hold
 
-For an off-season break — a gym block over winter, say — the app can be made
-inert without deleting anything. The history stays browsable at its URL; it
-just stops growing, and Postgres keeps every row for when training resumes.
+Coaching has an on/off switch, for off-season breaks — a gym block over
+winter, say. While it's held, the app is inert: the history stays browsable at
+its URL, it just stops growing, and Postgres keeps every row for when training
+resumes.
 
-Three things write to the database, and a hold has to cover all three:
+Flip it at `${APP_BASE_URL}/settings?token=<INTERNAL_API_TOKEN>` — the same
+token gate as `/connect/strava`, since the app has no user auth of its own and
+this page writes. It is deliberately absent from the nav (a nav link would 404
+for anyone without the token); a banner on the dashboard reports the state
+instead, which needs no token to read. Bookmark the URL.
+
+Three things write to the database, and the switch covers all three:
 
 1. **The Strava push subscription**, which fires on every upload — including
-   `WeightTraining` and `Ride`, not just runs. Delete it with
-   `deletePushSubscription(<id>)` from `src/lib/strava/client.ts` (list the
-   ids with `listPushSubscriptions()`). This is the one that matters most in a
-   gym block: left live, it syncs every session, matches it against a running
-   plan that no longer applies, and spends Anthropic tokens commenting on it.
+   `WeightTraining` and `Ride`, not just runs. Taking the hold deletes it and
+   resuming re-creates it, in the same click; left live, a gym block gets
+   synced, matched against a running plan that no longer applies, and
+   commented on at Anthropic's expense.
 2. **`cron-fallback-poll`**, hourly — which writes a daily-load rollup on
-   every run even when nothing new has synced.
+   every run even when nothing new has synced. Held, it gets
+   `{"paused":true}` in about two seconds and exits clean.
 3. **`cron-weekly`**, Sundays — which writes a new plan version, a coach's
-   read, and emails the debrief.
+   read, and emails the debrief. Held, it exits before any of it.
 
-Set `COACH_PAUSED=true` on `coach-app` and `cron-weekly` to neutralize 2 and 3
-in code (`src/lib/pause.ts`); `cron-fallback-poll` needs no variable of its
-own, since it only curls the web service's now-paused sync endpoint. Stopping
-the two cron services in Railway as well — remove the active deployment, don't
-clear the schedule field, which converts a cron service into an always-on one
-— saves the wake-ups, but the variable is what guarantees nothing writes if a
-cron is later redeployed.
+The state lives in the `app_settings` singleton row (`src/lib/pause.ts`), so
+all three read one source of truth with no redeploy, and `pausedAt` doubles as
+the backfill start date on the way back. Reads fail closed: a settings row the
+app can't query is not a database it should be writing coaching decisions
+into.
 
-Coming back: unset `COACH_PAUSED`, re-create the subscription with
-`npm run webhook:setup`, redeploy the cron services if their deployments were
-removed, and backfill the gap with `npm run strava:backfill -- <YYYY-MM-DD>`.
-Note that the Sunday job keeps authoring its own weeks once an external plan's
-skeleton runs out, so a long hold is also the moment to decide what plan it
-should pick up again — importing a fresh Runna block rather than extending a
-finished one.
+`COACH_PAUSED=true` in the environment forces the hold on and **cannot be
+lifted from the UI** — that asymmetry is the point, since it's the one hold
+that survives someone reaching the public URL. Use it for a deploy-level stop;
+use the toggle for everything else. Set it on `coach-app` and `cron-weekly`
+(not `cron-fallback-poll`, which only curls the web service). The settings
+page says when it's what's holding things, rather than letting the toggle
+appear to work and change nothing.
+
+Coming back is three steps, and `/settings` lists them with the dates filled
+in: resume from the toggle, `npm run strava:backfill -- <YYYY-MM-DD>` for the
+gap, then decide what plan it picks up. That last one matters — the Sunday job
+keeps authoring its own weeks once an external plan's skeleton runs out, so a
+long hold usually wants a freshly imported block rather than a continuation of
+a finished one.

@@ -23,8 +23,8 @@ import { isPaused } from "../src/lib/pause";
  * the brief.
  */
 async function main() {
-  if (isPaused()) {
-    console.log("COACH_PAUSED is set — skipping the whole weekly job: no sync, no plan regeneration, no debrief email.");
+  if (await isPaused()) {
+    console.log("Coaching is on hold — skipping the whole weekly job: no sync, no plan regeneration, no debrief email.");
     process.exit(0);
   }
 

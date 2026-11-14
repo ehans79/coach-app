@@ -1,5 +1,6 @@
 import { getThisWeekView } from "@/lib/dashboard/queries";
 import { assessTrainingStrain } from "@/lib/metrics/strain";
+import { getHoldState } from "@/lib/pause";
 
 // Data changes from ongoing Strava syncs/webhooks and the weekly regen job,
 // none of which correlate with a redeploy — always render fresh per request.
@@ -9,14 +10,24 @@ import { EmptyState } from "@/components/EmptyState";
 import { WeekBanner } from "@/components/WeekBanner";
 import { DayCard } from "@/components/DayCard";
 import { StrainBanner } from "@/components/StrainBanner";
+import { HoldBanner } from "@/components/HoldBanner";
 
 export default async function ThisWeekPage() {
-  const [week, strain] = await Promise.all([getThisWeekView(), assessTrainingStrain()]);
+  const [week, strain, hold] = await Promise.all([
+    getThisWeekView(),
+    assessTrainingStrain(),
+    getHoldState(),
+  ]);
 
   if (!week) {
     return (
       <div className="mx-auto max-w-3xl">
         <h1 className="mb-6 text-xl font-semibold text-ink-primary">This Week</h1>
+        {hold.paused && (
+          <div className="mb-4">
+            <HoldBanner hold={hold} />
+          </div>
+        )}
         <EmptyState message="No active plan found yet." />
       </div>
     );
@@ -27,6 +38,12 @@ export default async function ThisWeekPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
+      {hold.paused && (
+        <div className="mb-4">
+          <HoldBanner hold={hold} />
+        </div>
+      )}
+
       <WeekBanner
         weekNumber={week.weekNumber}
         startDate={week.startDate}

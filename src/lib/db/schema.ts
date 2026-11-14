@@ -529,3 +529,21 @@ export const coachReads = pgTable("coach_reads", {
   generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// App settings — one row, keyed like sync_state, for operational state that
+// isn't training data. Currently just the coaching hold: pausedAt null means
+// the app is coaching normally, a timestamp means it's on hold and every write
+// path (webhook, hourly poll, Sunday job) is a no-op until it's lifted.
+//
+// A nullable timestamp rather than a boolean because "since when" is the half
+// that matters on the way back: it's the backfill start date, and the thing
+// worth showing on the dashboard ("on hold since 14 Nov").
+// ---------------------------------------------------------------------------
+export const appSettings = pgTable("app_settings", {
+  id: text("id").primaryKey(), // 'singleton'
+  pausedAt: timestamp("paused_at", { withTimezone: true }), // null = actively coaching
+  /** Free text from whoever flipped it — "winter gym block". Shown on the settings page. */
+  pausedNote: text("paused_note"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

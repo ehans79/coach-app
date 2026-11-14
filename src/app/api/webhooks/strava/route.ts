@@ -45,11 +45,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   // On hold: ack so Strava doesn't retry the delivery or disable the
-  // subscription, but write nothing. A hold normally deletes the subscription
+  // subscription, but write nothing. Taking the hold deletes the subscription
   // outright — this is the backstop for a replayed delivery, or for a
-  // subscription re-created before the hold is actually lifted.
-  if (isPaused()) {
-    console.log("COACH_PAUSED is set — acking and discarding a Strava webhook delivery.");
+  // subscription that outlived the hold being re-taken.
+  if (await isPaused()) {
+    console.log("Coaching is on hold — acking and discarding a Strava webhook delivery.");
     return NextResponse.json({});
   }
 
