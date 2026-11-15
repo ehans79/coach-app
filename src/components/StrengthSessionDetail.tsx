@@ -50,23 +50,32 @@ function StructuredSession({ exercises }: { exercises: PlannedExercise[] }) {
             </div>
 
             {isProse ? (
-              <p className="text-xs leading-relaxed text-ink-secondary">
-                {sectionExercises.map((ex) => `${ex.exerciseName} (${ex.reps})`).join(", ")}
-              </p>
+              <>
+                <p className="text-xs leading-relaxed text-ink-secondary">
+                  {sectionExercises.map((ex) => `${ex.exerciseName} (${ex.reps})`).join(", ")}
+                </p>
+                {sectionExercises
+                  .filter((ex) => ex.howTo)
+                  .map((ex, i) => (
+                    <p key={i} className="mt-1 text-xs leading-relaxed text-ink-secondary">
+                      <span className="text-ink-primary">{ex.exerciseName}:</span> {ex.howTo}
+                    </p>
+                  ))}
+              </>
             ) : (
               <div className="flex flex-col">
                 {sectionExercises.map((ex, i) => (
-                  <div
-                    key={i}
-                    className="flex items-baseline justify-between gap-3 border-b border-border py-2 text-[13px] last:border-b-0"
-                  >
-                    <span className="text-ink-primary">{ex.exerciseName}</span>
-                    <span className="shrink-0 text-right">
-                      <span className="font-mono text-ink-muted tabular-nums">{formatLoad(ex)}</span>
-                      {ex.restBetweenSetsSeconds ? (
-                        <span className="ml-1.5 text-[10.5px] text-ink-muted">· {ex.restBetweenSetsSeconds}s rest</span>
-                      ) : null}
-                    </span>
+                  <div key={i} className="border-b border-border py-2 last:border-b-0">
+                    <div className="flex items-baseline justify-between gap-3 text-[13px]">
+                      <span className="text-ink-primary">{ex.exerciseName}</span>
+                      <span className="shrink-0 text-right">
+                        <span className="font-mono text-ink-muted tabular-nums">{formatLoad(ex)}</span>
+                        {ex.restBetweenSetsSeconds ? (
+                          <span className="ml-1.5 text-[10.5px] text-ink-muted">· {ex.restBetweenSetsSeconds}s rest</span>
+                        ) : null}
+                      </span>
+                    </div>
+                    {ex.howTo && <p className="mt-1 text-xs leading-relaxed text-ink-secondary">{ex.howTo}</p>}
                   </div>
                 ))}
               </div>

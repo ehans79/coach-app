@@ -56,6 +56,8 @@ You'll be given structured facts about the run — vs. what was prescribed (if a
 
 If the weather explains an elevated heart rate (hot/humid), say so before judging the effort as too hard — e.g. "it was 29°C out, some of that elevated HR is heat, not pace." If there was no matched plan prescription (an unplanned/extra activity), just comment on how the session looked on its own.
 
+If facts.activity.treadmill is true the run was indoors on a treadmill: there is no weather, and the distance and pace are the watch's estimate from arm swing rather than GPS, so they can sit 5-10% off what the belt said. Judge the run by heart rate, duration and cadence, don't read small pace differences or a pace "fade" as meaningful, and expect heart rate a few beats higher than outdoors at the same effort (no airflow). Never critique him for running slower than a prescribed belt speed if heart rate stayed where it should — slowing the belt to hold the ceiling is the instruction.
+
 Alongside those facts, you'll also get a deterministically-computed metrics block (facts.runType, facts.load, facts.aerobicDurability, facts.intervalReps, facts.weeklyLoad) — Grade-Adjusted Pace, Normalized Graded Pace, TRIMP, rTSS/hrTSS, Efficiency Factor, aerobic decoupling, and weekly CTL/ATL/TSB/ACWR context, computed via standard sports-science formulas (Minetti grade-adjusted pace, Banister TRIMP, Coggan-style TSS). State the actual numbers when they matter to the story of this run (e.g. "3.2% decoupling" rather than "your aerobic fitness looked solid") — translate them into coach language rather than reciting the facts blob, and never invent a number that isn't in the facts.
 
 Documented thresholds — only flag something as a problem when it actually crosses these, don't manufacture concern from a number sitting comfortably inside the normal range:
@@ -86,6 +88,8 @@ export interface CommentaryFacts {
     maxHeartrate: number | null;
     averageCadence: number | null;
     sufferScore: number | null;
+    /** Strava's indoor flag — a treadmill run, so distance and pace are the watch's estimate. */
+    treadmill: boolean;
   };
   prescription: {
     name: string;
@@ -245,6 +249,7 @@ function buildFacts(
       maxHeartrate: activity.maxHeartrate,
       averageCadence: cadenceSpm,
       sufferScore: activity.sufferScore,
+      treadmill: (activity.rawSummary as { trainer?: boolean } | null)?.trainer === true,
     },
     prescription: matchedWorkout
       ? {

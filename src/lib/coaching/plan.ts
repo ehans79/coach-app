@@ -3,6 +3,7 @@
 // the repo root for a full worked example) — the regeneration engine
 // produces new versions in this same shape so existing tooling stays
 // compatible.
+import { LEGACY_SETTING, type TrainingSetting } from "./setting";
 
 // One exercise within a strength session. `exerciseName` is the exact
 // display string as it appears in Garmin Connect's manual strength-workout
@@ -17,6 +18,10 @@ export interface StrengthExerciseJson {
   sets?: number;
   reps: string; // "12-15" | "8 each side" | "45-60s" — count- or time-based
   restBetweenSetsSeconds?: number;
+  /** A beginner's walkthrough — setup, the movement, how to pick a starting
+   * weight — written when the plan's setting asks for exercises to be
+   * explained (see TrainingSetting.explainExercises). */
+  howTo?: string;
 }
 
 export interface StrengthSectionJson {
@@ -28,6 +33,10 @@ export interface StrengthSectionJson {
 
 export interface StrengthWorkoutJson {
   sections: StrengthSectionJson[];
+}
+
+export function planSetting(plan: PlanDocument): TrainingSetting {
+  return plan.setting ?? LEGACY_SETTING;
 }
 
 export interface PlanWorkoutJson {
@@ -167,6 +176,11 @@ export interface PlanDocument {
       note?: string;
     };
   };
+  /** Where this block is trained (treadmill or outdoors, gym or bodyweight)
+   * and what must never be prescribed. Absent on plans that predate it, which
+   * were all outdoor running + bodyweight strength — read it through
+   * planSetting() rather than directly. */
+  setting?: TrainingSetting;
   /** Set when the athlete is following an externally-built plan (Runna) and
    * this app is layering coaching on top of it rather than authoring the
    * structure itself. See ExternalPlanSource. */

@@ -68,6 +68,7 @@ export interface PlannedExercise {
   sets: number | null;
   reps: string;
   restBetweenSetsSeconds: number | null;
+  howTo: string | null;
   rounds: string | null;
   restBetweenRoundsSeconds: number | null;
 }
@@ -178,6 +179,7 @@ export async function getThisWeekView(): Promise<ThisWeekView | null> {
       sets: row.sets,
       reps: row.reps,
       restBetweenSetsSeconds: row.restBetweenSetsSeconds,
+      howTo: row.howTo,
       rounds: row.rounds,
       restBetweenRoundsSeconds: row.restBetweenRoundsSeconds,
     });
@@ -527,7 +529,7 @@ export interface PlanHistoryEntry {
   version: number;
   generatedAt: Date;
   weekStartDate: string;
-  source: "seed" | "regeneration" | "manual";
+  source: "seed" | "regeneration" | "manual" | "fresh_block";
   rationale: string | null;
   isActive: boolean;
 }

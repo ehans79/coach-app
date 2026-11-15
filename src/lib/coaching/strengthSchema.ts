@@ -26,7 +26,7 @@ const SECTION_ENUM_BY_LABEL: Record<(typeof SECTION_LABELS)[number], "warm_up" |
   "Cool-down": "cool_down",
 };
 
-export function buildStrengthWorkoutSchema(exerciseNames: string[]) {
+export function buildStrengthWorkoutSchema(exerciseNames: string[], options: { explain?: boolean } = {}) {
   const exerciseSchema = z.object({
     exerciseName: z
       .enum(exerciseNames)
@@ -45,6 +45,15 @@ export function buildStrengthWorkoutSchema(exerciseNames: string[]) {
       .max(300)
       .optional()
       .describe("Seconds, 0-300. Rest after this exercise before its next set (omit for a single-set exercise)."),
+    howTo: z
+      .string()
+      .max(700)
+      .optional()
+      .describe(
+        options.explain
+          ? "Required for every Circuit and Core finisher exercise: 2-4 short sentences for someone who has never used the equipment — setup (which machine, what to adjust), one rep in plain words with the key cue, and how to find a starting weight."
+          : "Leave unset."
+      ),
   });
 
   const sectionSchema = z.object({
@@ -103,6 +112,7 @@ export function resolveStrengthWorkout(output: StrengthWorkoutModelOutput, catal
             sets: ex.sets,
             reps: ex.reps,
             restBetweenSetsSeconds: ex.restBetweenSetsSeconds,
+            howTo: ex.howTo?.trim() || undefined,
           };
         }),
       })
@@ -147,8 +157,12 @@ export function formatStrengthWorkoutText(strength: StrengthWorkoutJson): { desc
 
   const circuit = strength.sections.find((s) => s.label === "Circuit");
   const exerciseCount = circuit?.exercises.length ?? 0;
-  const roundsPart = circuit?.rounds ? `${circuit.rounds} rounds` : "circuit";
-  const description = `Warm-up, ${roundsPart} of ${exerciseCount} exercises, core finisher, cool-down.`;
+  // A gym session is straight sets rather than rounds, so there is no round
+  // count to lead with.
+  const mainPart = circuit?.rounds
+    ? `${circuit.rounds} rounds of ${exerciseCount} exercises`
+    : `${exerciseCount} main exercises`;
+  const description = `Warm-up, ${mainPart}, core finisher, cool-down.`;
 
   return { description, humanReadable };
 }
@@ -181,6 +195,7 @@ export function flattenStrengthExercises(
         sets: ex.sets ?? null,
         reps: ex.reps,
         restBetweenSetsSeconds: ex.restBetweenSetsSeconds ?? null,
+        howTo: ex.howTo ?? null,
         rounds: section.rounds ?? null,
         restBetweenRoundsSeconds: section.restBetweenRoundsSeconds ?? null,
       });

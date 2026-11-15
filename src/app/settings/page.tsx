@@ -2,8 +2,11 @@ import { notFound } from "next/navigation";
 import { getEnv } from "@/lib/env";
 import { daysSince, getHoldState } from "@/lib/pause";
 import { listPushSubscriptions } from "@/lib/strava/client";
+import { blockStartDate, getDefaultFreshBlockSetting } from "@/lib/coaching/freshBlock";
+import type { TrainingSetting } from "@/lib/coaching/setting";
 import { Card } from "@/components/Card";
-import { setHoldAction } from "./actions";
+import { SubmitButton } from "@/components/SubmitButton";
+import { setHoldAction, startFreshBlockAction } from "./actions";
 
 // Hold state is flipped here and read by the cron jobs; never serve a cached view of it.
 export const dynamic = "force-dynamic";
@@ -14,6 +17,115 @@ function formatDate(d: Date): string {
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+const BLOCK_OUTCOME: Record<string, string> = {
+  "env-hold":
+    "COACH_PAUSED is set on the server, so coaching can't be resumed from here and no plan was built.",
+  "sync-failed":
+    "Coaching is resumed, but Strava couldn't be read, so no plan was built — it would have been sized from out-of-date history. Try again in a few minutes.",
+  "build-failed":
+    "Coaching is resumed and Strava is synced, but writing the plan failed. Nothing was changed; try again, and if it keeps failing the server log has the reason.",
+};
+
+const PRIMARY_BUTTON =
+  "rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40";
+
+function Choice({
+  name,
+  value,
+  defaultChecked,
+  title,
+  detail,
+}: {
+  name: string;
+  value: string;
+  defaultChecked: boolean;
+  title: string;
+  detail: string;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-2.5 rounded-md border border-border bg-surface px-3 py-2">
+      <input type="radio" name={name} value={value} defaultChecked={defaultChecked} className="mt-1 accent-accent" />
+      <span>
+        <span className="block text-sm font-medium text-ink-primary">{title}</span>
+        <span className="block text-xs text-ink-secondary">{detail}</span>
+      </span>
+    </label>
+  );
+}
+
+/**
+ * The choices a new block is built from. Whatever is submitted here is stored
+ * on the plan (PlanDocument.setting), so the Sunday job keeps to it every week
+ * after — this is the one place it is chosen.
+ */
+function FreshBlockFields({ setting }: { setting: TrainingSetting }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <fieldset className="flex flex-col gap-2">
+        <legend className="mb-1.5 text-xs font-bold tracking-wide text-ink-muted uppercase">Running</legend>
+        <Choice
+          name="running"
+          value="treadmill"
+          defaultChecked={setting.running === "treadmill"}
+          title="Treadmill"
+          detail="Belt speeds in km/h, incline, and timed steps you can follow at the console."
+        />
+        <Choice
+          name="running"
+          value="outdoor"
+          defaultChecked={setting.running === "outdoor"}
+          title="Outdoors"
+          detail="Distances and paces in min/km."
+        />
+      </fieldset>
+
+      <fieldset className="flex flex-col gap-2">
+        <legend className="mb-1.5 text-xs font-bold tracking-wide text-ink-muted uppercase">Strength</legend>
+        <Choice
+          name="strength"
+          value="gym"
+          defaultChecked={setting.strength === "gym"}
+          title="Gym"
+          detail="Machines, cables and dumbbells — no barbell lifts, nothing that needs a spotter."
+        />
+        <Choice
+          name="strength"
+          value="bodyweight"
+          defaultChecked={setting.strength === "bodyweight"}
+          title="Bodyweight at home"
+          detail="Circuits with no equipment."
+        />
+      </fieldset>
+
+      <label className="flex cursor-pointer items-start gap-2.5">
+        <input type="checkbox" name="explain" defaultChecked={setting.explainExercises} className="mt-1 accent-accent" />
+        <span>
+          <span className="block text-sm font-medium text-ink-primary">Explain every exercise</span>
+          <span className="block text-xs text-ink-secondary">
+            How to set the machine up, how to do one rep, and how to pick a starting weight — written under each
+            exercise in the session.
+          </span>
+        </span>
+      </label>
+
+      <label className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium text-ink-primary">Never include</span>
+        <input
+          type="text"
+          name="avoid"
+          defaultValue={setting.avoidExercises.join(", ")}
+          maxLength={200}
+          placeholder="e.g. Bench Press, Burpee"
+          className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink-primary placeholder:text-ink-muted"
+        />
+        <span className="text-xs text-ink-secondary">
+          Comma-separated. Every variation of each is left out of every session, this week and after.
+        </span>
+      </label>
+    </div>
+  );
 }
 
 /**
@@ -29,12 +141,18 @@ function isoDate(d: Date): string {
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ token?: string }>;
+  searchParams: Promise<{ token?: string; block?: string }>;
 }) {
-  const { token } = await searchParams;
+  const { token, block } = await searchParams;
   if (token !== getEnv().INTERNAL_API_TOKEN) notFound();
 
   const hold = await getHoldState();
+  const blockSetting = await getDefaultFreshBlockSetting();
+  const blockOutcome = block ? BLOCK_OUTCOME[block] : undefined;
+  const todayStr = isoDate(new Date());
+  const blockStart = blockStartDate(todayStr);
+  const blockStartLabel =
+    blockStart <= todayStr ? "this week" : `on Monday ${formatDate(new Date(`${blockStart}T00:00:00Z`))}`;
 
   // Read live rather than inferred from the hold: if the action's Strava call
   // failed, this is where the mismatch becomes visible.
@@ -53,6 +171,19 @@ export default async function SettingsPage({
   return (
     <div className="mx-auto max-w-2xl">
       <h1 className="mb-6 text-xl font-semibold text-ink-primary">Settings</h1>
+
+      {blockOutcome && (
+        <p
+          role="alert"
+          className="mb-4 rounded-xl border border-border p-4 text-sm leading-relaxed text-ink-primary"
+          style={{
+            backgroundColor: "var(--status-critical-soft)",
+            borderLeft: "4px solid var(--status-critical)",
+          }}
+        >
+          {blockOutcome}
+        </p>
+      )}
 
       <section
         className="rounded-xl border border-border p-5 shadow-card"
@@ -90,10 +221,45 @@ export default async function SettingsPage({
           </p>
         )}
 
-        <form action={setHoldAction} className="mt-4 flex flex-col gap-3">
-          <input type="hidden" name="token" value={token} />
-          <input type="hidden" name="intent" value={paused ? "resume" : "hold"} />
-          {!paused && (
+        {paused ? (
+          <>
+            {/* Coming back is one click: resume, read the gap from Strava, write week 1. */}
+            <form action={startFreshBlockAction} className="mt-5 flex flex-col gap-4 border-t border-border pt-4">
+              <input type="hidden" name="token" value={token} />
+              <div>
+                <p className="text-sm font-semibold text-ink-primary">Come back with a new plan</p>
+                <p className="mt-1 text-sm leading-relaxed text-ink-secondary">
+                  Resumes coaching, reads everything Strava has from the time away, and writes week 1 of a new
+                  block from it, starting {blockStartLabel}. The plan you were on before is kept in the history
+                  but not continued.
+                </p>
+              </div>
+              <FreshBlockFields setting={blockSetting} />
+              <SubmitButton
+                disabled={hold.envOverride}
+                pendingLabel="Reading Strava and writing your plan — about two minutes…"
+                className={PRIMARY_BUTTON}
+              >
+                Resume coaching and build my plan
+              </SubmitButton>
+            </form>
+
+            <form action={setHoldAction} className="mt-3">
+              <input type="hidden" name="token" value={token} />
+              <input type="hidden" name="intent" value="resume" />
+              <SubmitButton
+                disabled={hold.envOverride}
+                pendingLabel="Resuming…"
+                className="text-sm font-medium text-ink-secondary underline underline-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Resume without a new plan
+              </SubmitButton>
+            </form>
+          </>
+        ) : (
+          <form action={setHoldAction} className="mt-4 flex flex-col gap-3">
+            <input type="hidden" name="token" value={token} />
+            <input type="hidden" name="intent" value="hold" />
             <input
               type="text"
               name="note"
@@ -101,16 +267,36 @@ export default async function SettingsPage({
               placeholder="Why, in a few words — e.g. winter gym block"
               className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink-primary placeholder:text-ink-muted"
             />
-          )}
-          <button
-            type="submit"
-            disabled={hold.envOverride && paused}
-            className="rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {paused ? "Resume coaching" : "Put coaching on hold"}
-          </button>
-        </form>
+            <SubmitButton pendingLabel="Putting coaching on hold…" className={PRIMARY_BUTTON}>
+              Put coaching on hold
+            </SubmitButton>
+          </form>
+        )}
       </section>
+
+      {!paused && (
+        <Card
+          title="Start a fresh block"
+          subtitle="A new plan from your recent Strava history, replacing the current one"
+          className="mt-4"
+        >
+          <form action={startFreshBlockAction} className="flex flex-col gap-4">
+            <input type="hidden" name="token" value={token} />
+            <p className="text-sm leading-relaxed text-ink-secondary">
+              For changing where you train — moving indoors for winter, or back outside — or starting over after a
+              block ends. Syncs Strava first, then writes week 1 starting {blockStartLabel}. The Sunday job carries
+              on from week 2 with the same choices.
+            </p>
+            <FreshBlockFields setting={blockSetting} />
+            <SubmitButton
+              pendingLabel="Reading Strava and writing your plan — about two minutes…"
+              className={PRIMARY_BUTTON}
+            >
+              Build a fresh block
+            </SubmitButton>
+          </form>
+        </Card>
+      )}
 
       <Card
         title="What the switch covers"
@@ -149,22 +335,20 @@ export default async function SettingsPage({
         </ul>
       </Card>
 
-      {paused && hold.since && (
+      {paused && (
         <Card title="When you come back" className="mt-4">
-          <ol className="flex list-decimal flex-col gap-2 pl-4 text-sm text-ink-secondary">
-            <li>Hit “Resume coaching” above — that also re-creates the Strava webhook.</li>
+          <ul className="flex flex-col gap-3 text-sm text-ink-secondary">
             <li>
-              Backfill the gap:{" "}
-              <code className="rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-xs text-ink-primary">
-                npm run strava:backfill -- {isoDate(hold.since)}
-              </code>
+              <span className="font-medium text-ink-primary">Resume coaching and build my plan</span> does all of
+              it: lifts the hold, re-creates the Strava webhook, syncs the gap, and writes a new week 1 sized from
+              what you actually did while away. A long hold almost always wants this one.
             </li>
             <li>
-              Decide what plan it picks up. The Sunday job authors its own weeks once an external
-              plan&apos;s skeleton runs out, so a long hold usually wants a freshly imported block rather
-              than a continuation of a finished one.
+              <span className="font-medium text-ink-primary">Resume without a new plan</span> only lifts the hold.
+              Use it after a short pause, when the plan you were on still has a week covering today — the Sunday
+              job can only extend a plan that does, and stops with an error otherwise.
             </li>
-          </ol>
+          </ul>
         </Card>
       )}
     </div>

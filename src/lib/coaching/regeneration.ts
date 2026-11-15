@@ -8,6 +8,7 @@ import { computeGuardrails, type Guardrails } from "./guardrails";
 import {
   flattenPlanWorkouts,
   findSkeletonWeek,
+  planSetting,
   type PlanDocument,
   type PlanWeekJson,
   type PlanDayJson,
@@ -15,13 +16,14 @@ import {
   type ExternalSkeletonSession,
 } from "./plan";
 import { generateStructured, COACHING_MODEL } from "@/lib/llm/anthropic";
-import { getAllExercises, ExerciseCatalog } from "./exerciseCatalog";
+import { getAllExercises, ExerciseCatalog, type GarminExercise } from "./exerciseCatalog";
 import {
   buildStrengthWorkoutSchema,
   resolveStrengthWorkout,
   formatStrengthWorkoutText,
   flattenStrengthExercises,
 } from "./strengthSchema";
+import { runningReference, strengthReference, settingLabel, type TrainingSetting } from "./setting";
 
 const COACHING_REFERENCE = `Progressive overload / ramp rate (by athlete state): true beginner 5-10%/week; some experience (1-2yr) 10%/week; strong foundation returning from a break 10-15%/week; recent high fitness/no break: maintain or small build. Time off from injury needs more caution than time off from life circumstances.
 Loading pattern: 3 weeks building + 1 recovery week (30-40% volume cut) is standard. Recovery weeks: no Zone 4+ work, 40-50% of a normal week's volume.
@@ -29,32 +31,26 @@ Long-run progression: never increase by more than ~2-3km/week.
 Weekly structure: no same-sport back-to-back hard days; 48hr between quality sessions; easy day after long runs; consistent weekly schedule.
 Intensity distribution (polarized): 75-80% of weekly volume easy (Zone 1-2), 5-10% moderate (Zone 3 — deliberately minimized), 15-20% hard (Zone 4-5).`;
 
-const STRENGTH_REFERENCE = `Foundation-level session structure (beginner, base phase — the athlete's current level): 2-3 sets x 12-15 reps, bodyweight only — add light dumbbells/kettlebell only once bodyweight feels easy across all sets. Every session includes core work (a plank/anti-rotation move, a hip-hinge or bridge move, a single-leg balance move). Include run-specific focus exercises across sessions: lunges, Romanian deadlifts (bodyweight/light-load for a beginner), calf raises, single-leg work (single-leg balance, step-ups).
-Structure (four sections, always in this order): Warm-up (2-4 light mobility/activation moves) → Circuit (4-6 exercises done for 2-3 rounds) → Core finisher (2-3 exercises) → Cool-down (2-4 static stretches). Every exercise in every section — including warm-up and cool-down — must be an exact Garmin Connect exercise name from the list below; never invent one or describe one in free text instead of picking a list entry.
-One exercise per step, never a combined choice: Garmin Connect lists close variants as separate, distinct exercises (e.g. "Push-up" and "Knee Push-up" are two different list entries) — commit to one specific exercise, never something like "Push-ups (knee or full)" that tries to name two entries at once. If you want an easier or harder version for this athlete, pick that specific variant's own list entry.
-Rest scheme (this athlete has no rest-timer habit yet, so be explicit and a little conservative): 30-45s between sets for most circuit bodyweight/light-dumbbell exercises, 45-60s for anything loaded or hinge-pattern (deadlift variations, weighted step-ups); core-finisher holds usually need less, 20-30s; between circuit rounds, 45-90s depending on how taxing the round was. Warm-up/cool-down exercises don't need rest fields.
-Progression across weeks: keep the same movement patterns — progress by adding a round, moving toward the top of the rep range, or tightening form/tempo (and only trim rest time once the athlete is clearly recovering fully within it). Only add a light external load once bodyweight feels genuinely easy across all sets; never jump straight to heavier weights as the first progression.`;
-
 function findWeekContainingDate(weeks: PlanWeekJson[], dateStr: string): PlanWeekJson | undefined {
   return weeks.find((w) => w.startDate <= dateStr && dateStr <= w.endDate);
 }
 
-function addDays(dateStr: string, days: number): string {
+export function addDays(dateStr: string, days: number): string {
   const d = new Date(`${dateStr}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
-function dayOfWeekName(dateStr: string): string {
+export function dayOfWeekName(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00Z`).toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
 }
 
-const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
+export const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 
 /** Built per-call from the full Garmin exercise name reference table (its
  * enum of valid exercise names reflects whatever's imported in the DB right
  * now), rather than as a module-level constant. */
-function buildWeekResponseSchema(exerciseNames: string[]) {
+export function buildWeekResponseSchema(exerciseNames: string[], setting: TrainingSetting) {
   const workoutSchema = z
     .object({
       sport: z.string().describe('e.g. "run", "strength", "rest", "bike".'),
@@ -69,7 +65,7 @@ function buildWeekResponseSchema(exerciseNames: string[]) {
         .optional()
         .describe("Athlete-facing instructions. Ignored for strength workouts — see the strength field instead."),
       strength: z
-        .optional(buildStrengthWorkoutSchema(exerciseNames))
+        .optional(buildStrengthWorkoutSchema(exerciseNames, { explain: setting.explainExercises }))
         .describe('Required when sport is "strength"; omit entirely for every other sport.'),
     })
     // A plain .optional() can't express "required conditional on a sibling
@@ -105,7 +101,7 @@ function buildWeekResponseSchema(exerciseNames: string[]) {
 }
 
 type WeekResponseSchema = ReturnType<typeof buildWeekResponseSchema>;
-type LlmWeekResponse = z.infer<WeekResponseSchema>;
+export type LlmWeekResponse = z.infer<WeekResponseSchema>;
 type LlmWorkout = LlmWeekResponse["days"][(typeof DAY_NAMES)[number]][number];
 
 function buildPrompt(params: {
@@ -120,6 +116,7 @@ function buildPrompt(params: {
   currentZones: CurrentZoneVersion | null;
   skeletonWeek: ExternalSkeletonWeek | undefined;
   externalProvider: string | undefined;
+  lastWeekStrength: string | undefined;
 }): string {
   return `Athlete assessment (from the original plan): ${JSON.stringify(params.plan.assessment)}
 Current HR/pace zones (live, as of ${params.currentZones?.asOfDate ?? "n/a"} — prescribe against THESE, not any zone table quoted elsewhere): ${JSON.stringify(
@@ -141,27 +138,47 @@ ${
       ? `For loose reference, here is what this week originally looked like in the hand-built plan (before this trend-based regeneration) — deviate from it as needed to satisfy the guardrails and the actual assessment above, but keep the same weekly rhythm (which days are runs/strength/rest) unless the assessment gives a clear reason to change it:\n${JSON.stringify(params.referenceWeek, null, 2)}`
       : "There is no pre-built reference for this week — continue the same weekly rhythm as recent weeks (3 runs/week, 2 strength sessions/week, rest days between)."
 }
-
+${
+  params.lastWeekStrength
+    ? `\nLast week's strength sessions, for continuity — progress these rather than starting from a new set of exercises:\n${params.lastWeekStrength}\n`
+    : ""
+}
 A rest day is a workout entry with sport "rest". Every one of the 7 days must have at least one workout entry (use a rest-day entry for days with nothing planned). Distances in meters, metric only.`;
 }
 
-function buildSystemPrompt(catalog: ExerciseCatalog): string {
-  return `You are Edu's personal running coach, regenerating next week's training plan based on how last week actually went — not blindly incrementing a template. You reason the way a real coach reviewing a training log would: reward consistency and clean zone discipline with progression, and hold back or adjust when the data shows drift, missed sessions, or overreaching signals.
+const REGENERATION_ROLE = `You are Edu's personal running coach, regenerating next week's training plan based on how last week actually went — not blindly incrementing a template. You reason the way a real coach reviewing a training log would: reward consistency and clean zone discipline with progression, and hold back or adjust when the data shows drift, missed sessions, or overreaching signals.`;
+
+const REGENERATION_BRIEF = `You will be given the athlete's assessment/constraints, current zones, the current training phase, a detailed report of how last week went, and a set of hard guardrails already computed by the app (max volume change, recovery-week status, max long-run increase) — treat the guardrails as non-negotiable caps, not suggestions. Your job is to fill in the specific sessions within those caps and explain the reasoning in the rationale field, in the athlete's own coach's voice — the kind of thing that would appear on a dashboard under "why did my plan change this week."`;
+
+/**
+ * The system prompt shared by the weekly regeneration and the fresh-block
+ * builder. `catalog` must already have the setting's avoided exercises removed
+ * — the list printed here is the menu the model picks from.
+ */
+export function buildSystemPrompt(
+  catalog: ExerciseCatalog,
+  setting: TrainingSetting,
+  voice: { role: string; brief: string } = { role: REGENERATION_ROLE, brief: REGENERATION_BRIEF }
+): string {
+  return `${voice.role}
 
 Coaching reference rules to apply:
 ${COACHING_REFERENCE}
 
-Strength/gym-day reference — use this as a library of exercises and progression logic (not a template to copy verbatim every week), the same way you use the coaching reference above for run days:
-${STRENGTH_REFERENCE}
+Where this block is trained: ${settingLabel(setting)}. This holds for every session you write.
+${runningReference(setting)}
 
-Garmin Connect exercise names — Edu hand-enters each planned strength session into Garmin Connect's manual workout builder himself, so every exercise in every strength workout's "strength" field MUST be one of these exact names, verbatim (this is the complete list from Garmin Connect's own exercise picker — not a curated subset):
+Strength/gym-day reference — use this as a library of exercises and progression logic (not a template to copy verbatim every week), the same way you use the coaching reference above for run days:
+${strengthReference(setting)}
+
+Garmin Connect exercise names — Edu hand-enters each planned strength session into Garmin Connect's manual workout builder himself, so every exercise in every strength workout's "strength" field MUST be one of these exact names, verbatim (taken from Garmin Connect's own exercise picker):
 ${catalog.describe()}
 
-You will be given the athlete's assessment/constraints, current zones, the current training phase, a detailed report of how last week went, and a set of hard guardrails already computed by the app (max volume change, recovery-week status, max long-run increase) — treat the guardrails as non-negotiable caps, not suggestions. Your job is to fill in the specific sessions within those caps and explain the reasoning in the rationale field, in the athlete's own coach's voice — the kind of thing that would appear on a dashboard under "why did my plan change this week."
+${voice.brief}
 
 Every strength/gym-type workout must get the same level of concrete detail as a run workout, via its structured "strength" field (never a generic placeholder like "Beginner Full-Body Strength, 35 minutes" with no exercises) — set "description"/"humanReadable" for every other sport, but leave them out for strength workouts, since the app renders those from the structured data instead.
 
-Output metric units only (km/m, min:sec/km, °C) — never imperial.`;
+Output metric units only (km/m, min:sec/km, km/h, °C) — never imperial.`;
 }
 
 function totalRunDistanceMeters(days: LlmWeekResponse["days"]): number {
@@ -172,7 +189,7 @@ function totalRunDistanceMeters(days: LlmWeekResponse["days"]): number {
 }
 
 /** Clamps the LLM's proposed week to the guardrails' hard bounds — never trust generated output unchecked. */
-function clampToGuardrails(
+export function clampToGuardrails(
   llmWeek: LlmWeekResponse,
   guardrails: Guardrails
 ): { week: LlmWeekResponse; warnings: string[] } {
@@ -318,6 +335,133 @@ function applySkeleton(
   return { week: { ...llmWeek, days }, warnings };
 }
 
+/** Turns the model's validated week into dated plan days, resolving every strength exercise against the catalog. */
+export function materialiseDays(
+  weekNumber: number,
+  weekStartDate: string,
+  week: LlmWeekResponse,
+  catalog: ExerciseCatalog
+): PlanDayJson[] {
+  const days: PlanDayJson[] = [];
+  for (let i = 0; i < 7; i++) {
+    const date = addDays(weekStartDate, i);
+    const dayName = DAY_NAMES[i];
+    const workouts = week.days[dayName] ?? [];
+    days.push({
+      date,
+      dayOfWeek: dayOfWeekName(date),
+      workouts: workouts.map((w, idx) => {
+        const strength = w.sport === "strength" && w.strength ? resolveStrengthWorkout(w.strength, catalog) : undefined;
+        const strengthText = strength ? formatStrengthWorkoutText(strength) : undefined;
+        return {
+          id: `w${weekNumber}-${date}-${w.sport}${idx > 0 ? `-${idx}` : ""}`,
+          sport: w.sport,
+          type: w.type,
+          name: w.name,
+          description: strengthText?.description ?? w.description,
+          durationMinutes: w.durationMinutes,
+          distanceMeters: w.distanceMeters,
+          primaryZone: w.primaryZone,
+          humanReadable: strengthText?.humanReadable ?? w.humanReadable,
+          strength,
+          completed: false,
+        };
+      }),
+    });
+  }
+  return days;
+}
+
+/**
+ * Writes `plan` as the new active version: the plans row, its flattened
+ * plan_workouts, and their plan_workout_exercises, then retires
+ * `supersedePlanId`. In one transaction, so a failure part-way can't leave two
+ * active plans or an active plan with no workouts under it.
+ */
+export async function persistPlanVersion(params: {
+  plan: PlanDocument;
+  version: number;
+  weekStartDate: string;
+  source: (typeof plans.$inferInsert)["source"];
+  rationale: string;
+  guardrailsApplied: Record<string, unknown>;
+  supersedePlanId: string | null;
+  allExercises: GarminExercise[];
+}): Promise<string> {
+  return db.transaction(async (tx) => {
+    if (params.supersedePlanId) {
+      await tx.update(plans).set({ isActive: false }).where(eq(plans.id, params.supersedePlanId));
+    }
+
+    const [insertedPlan] = await tx
+      .insert(plans)
+      .values({
+        version: params.version,
+        weekStartDate: params.weekStartDate,
+        source: params.source,
+        rationale: params.rationale,
+        guardrailsApplied: params.guardrailsApplied,
+        planJson: params.plan,
+        isActive: true,
+      })
+      .returning({ id: plans.id });
+
+    const flattened = flattenPlanWorkouts(params.plan);
+    const insertedWorkouts = await tx
+      .insert(planWorkouts)
+      .values(
+        flattened.map((row) => ({
+          planId: insertedPlan.id,
+          date: row.date,
+          dayOfWeek: row.dayOfWeek,
+          workoutKey: row.workoutKey,
+          sport: row.sport,
+          type: row.type,
+          name: row.name,
+          description: row.description,
+          durationMinutes: row.durationMinutes,
+          distanceMeters: row.distanceMeters,
+          primaryZone: row.primaryZone,
+          humanReadable: row.humanReadable,
+          completed: row.completed,
+        }))
+      )
+      .returning({ id: planWorkouts.id, workoutKey: planWorkouts.workoutKey });
+
+    const workoutIdByKey = new Map(insertedWorkouts.map((w) => [w.workoutKey, w.id]));
+    const exerciseRows = flattened.flatMap((row) => {
+      if (!row.strength) return [];
+      const planWorkoutId = workoutIdByKey.get(row.workoutKey);
+      if (!planWorkoutId) return []; // shouldn't happen — every flattened row was just inserted above
+      return flattenStrengthExercises(row.strength, planWorkoutId, params.allExercises);
+    });
+    if (exerciseRows.length > 0) {
+      await tx.insert(planWorkoutExercises).values(exerciseRows);
+    }
+
+    return insertedPlan.id;
+  });
+}
+
+/** Last week's strength sessions as text, so the next week progresses them instead of reinventing them. */
+function describeStrengthSessions(week: PlanWeekJson): string | undefined {
+  const sessions = week.days.flatMap((day) =>
+    day.workouts
+      .filter((w) => w.sport === "strength" && w.humanReadable)
+      .map((w) => `${day.dayOfWeek} — ${w.name}:\n${w.humanReadable}`)
+  );
+  return sessions.length > 0 ? sessions.join("\n\n") : undefined;
+}
+
+/**
+ * Output budget for one generated week. A how-to on every main exercise of two
+ * gym sessions roughly doubles what the strength half of the response needs,
+ * and a week truncated mid-JSON fails validation outright.
+ */
+export function weekMaxTokens(setting: TrainingSetting): number {
+  return setting.explainExercises ? 14_000 : 8192;
+}
+
 export interface RegenerationResult {
   planId: string;
   version: number;
@@ -385,6 +529,7 @@ export async function regeneratePlanForNextWeek(todayStr: string): Promise<Regen
   // When the athlete is following an externally-built plan, that plan owns the
   // week's structure and this engine only writes the coaching detail on top.
   const skeletonWeek = findSkeletonWeek(planJson, weekStartDate);
+  const setting = planSetting(planJson);
   const prompt = buildPrompt({
     plan: planJson,
     weekNumber,
@@ -397,18 +542,21 @@ export async function regeneratePlanForNextWeek(todayStr: string): Promise<Regen
     currentZones,
     skeletonWeek,
     externalProvider: planJson.externalPlan?.provider,
+    lastWeekStrength: describeStrengthSessions(justEndedWeek),
   });
 
   const allExercises = await getAllExercises();
-  const catalog = new ExerciseCatalog(allExercises);
+  // Avoided exercises are removed from the menu itself, not just argued against
+  // in the prompt — see ExerciseCatalog.without.
+  const catalog = new ExerciseCatalog(allExercises).without(setting.avoidExercises);
 
   const llmWeek = await generateStructured({
-    system: buildSystemPrompt(catalog),
+    system: buildSystemPrompt(catalog, setting),
     prompt,
-    schema: buildWeekResponseSchema(catalog.names),
+    schema: buildWeekResponseSchema(catalog.names, setting),
     toolName: "submit_week_plan",
     toolDescription: "Submit the fully-specified training plan for the upcoming week.",
-    maxTokens: 8192,
+    maxTokens: weekMaxTokens(setting),
   });
   // Pinned weeks are not clamped: the external plan already periodises volume,
   // and scaling its distances would put the app back in conflict with the plan
@@ -427,33 +575,7 @@ export async function regeneratePlanForNextWeek(todayStr: string): Promise<Regen
     }
   }
 
-  const days: PlanDayJson[] = [];
-  for (let i = 0; i < 7; i++) {
-    const date = addDays(weekStartDate, i);
-    const dayName = DAY_NAMES[i];
-    const workouts = clampedWeek.days[dayName] ?? [];
-    days.push({
-      date,
-      dayOfWeek: dayOfWeekName(date),
-      workouts: workouts.map((w, idx) => {
-        const strength = w.sport === "strength" && w.strength ? resolveStrengthWorkout(w.strength, catalog) : undefined;
-        const strengthText = strength ? formatStrengthWorkoutText(strength) : undefined;
-        return {
-          id: `w${weekNumber}-${date}-${w.sport}${idx > 0 ? `-${idx}` : ""}`,
-          sport: w.sport,
-          type: w.type,
-          name: w.name,
-          description: strengthText?.description ?? w.description,
-          durationMinutes: w.durationMinutes,
-          distanceMeters: w.distanceMeters,
-          primaryZone: w.primaryZone,
-          humanReadable: strengthText?.humanReadable ?? w.humanReadable,
-          strength,
-          completed: false,
-        };
-      }),
-    });
-  }
+  const days = materialiseDays(weekNumber, weekStartDate, clampedWeek, catalog);
 
   const newWeek: PlanWeekJson = {
     weekNumber,
@@ -483,69 +605,33 @@ export async function regeneratePlanForNextWeek(todayStr: string): Promise<Regen
   };
 
   const newVersion = activePlan.version + 1;
-  const [insertedPlan] = await db
-    .insert(plans)
-    .values({
-      version: newVersion,
-      weekStartDate,
-      source: "regeneration",
-      rationale: clampedWeek.rationale,
-      guardrailsApplied: {
-        ...guardrails,
-        warnings,
-        model: COACHING_MODEL,
-        weekVerdict: clampedWeek.weekVerdict,
-        pinnedTo: skeletonWeek
-          ? {
-              provider: planJson.externalPlan?.provider ?? "external",
-              planName: planJson.externalPlan?.planName ?? null,
-              weekNumber: skeletonWeek.weekNumber,
-              advisoryOnly: true, // guardrails did not clamp this week
-            }
-          : null,
-      },
-      planJson: updatedPlan,
-      isActive: true,
-    })
-    .returning({ id: plans.id });
-
-  await db.update(plans).set({ isActive: false }).where(eq(plans.id, activePlan.id));
-
-  const flattened = flattenPlanWorkouts(updatedPlan);
-  const insertedWorkouts = await db
-    .insert(planWorkouts)
-    .values(
-      flattened.map((row) => ({
-        planId: insertedPlan.id,
-        date: row.date,
-        dayOfWeek: row.dayOfWeek,
-        workoutKey: row.workoutKey,
-        sport: row.sport,
-        type: row.type,
-        name: row.name,
-        description: row.description,
-        durationMinutes: row.durationMinutes,
-        distanceMeters: row.distanceMeters,
-        primaryZone: row.primaryZone,
-        humanReadable: row.humanReadable,
-        completed: row.completed,
-      }))
-    )
-    .returning({ id: planWorkouts.id, workoutKey: planWorkouts.workoutKey });
-
-  const workoutIdByKey = new Map(insertedWorkouts.map((w) => [w.workoutKey, w.id]));
-  const exerciseRows = flattened.flatMap((row) => {
-    if (!row.strength) return [];
-    const planWorkoutId = workoutIdByKey.get(row.workoutKey);
-    if (!planWorkoutId) return []; // shouldn't happen — every flattened row was just inserted above
-    return flattenStrengthExercises(row.strength, planWorkoutId, allExercises);
+  const planId = await persistPlanVersion({
+    plan: updatedPlan,
+    version: newVersion,
+    weekStartDate,
+    source: "regeneration",
+    rationale: clampedWeek.rationale,
+    guardrailsApplied: {
+      ...guardrails,
+      warnings,
+      model: COACHING_MODEL,
+      weekVerdict: clampedWeek.weekVerdict,
+      setting,
+      pinnedTo: skeletonWeek
+        ? {
+            provider: planJson.externalPlan?.provider ?? "external",
+            planName: planJson.externalPlan?.planName ?? null,
+            weekNumber: skeletonWeek.weekNumber,
+            advisoryOnly: true, // guardrails did not clamp this week
+          }
+        : null,
+    },
+    supersedePlanId: activePlan.id,
+    allExercises,
   });
-  if (exerciseRows.length > 0) {
-    await db.insert(planWorkoutExercises).values(exerciseRows);
-  }
 
   return {
-    planId: insertedPlan.id,
+    planId,
     version: newVersion,
     rationale: clampedWeek.rationale,
     weekVerdict: clampedWeek.weekVerdict,

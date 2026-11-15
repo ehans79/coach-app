@@ -180,9 +180,49 @@ use the toggle for everything else. Set it on `coach-app` and `cron-weekly`
 page says when it's what's holding things, rather than letting the toggle
 appear to work and change nothing.
 
-Coming back is three steps, and `/settings` lists them with the dates filled
-in: resume from the toggle, `npm run strava:backfill -- <YYYY-MM-DD>` for the
-gap, then decide what plan it picks up. That last one matters — the Sunday job
-keeps authoring its own weeks once an external plan's skeleton runs out, so a
-long hold usually wants a freshly imported block rather than a continuation of
-a finished one.
+Coming back is one button on `/settings`: **Resume coaching and build my
+plan**. It lifts the hold, re-creates the webhook, syncs everything Strava has
+from the gap (the sync cursor is the last activity before the hold, so no
+separate backfill is needed), and starts a fresh block — see below. "Resume
+without a new plan" only lifts the hold, and is for a short pause where the
+plan still has a week covering today; the Sunday job can only extend a plan
+that does.
+
+## Starting a fresh block
+
+The Sunday job extends a plan one week at a time. It cannot start one: after a
+long hold, or when the place you train changes, there is no "last week" worth
+building on. `startFreshBlock` (`src/lib/coaching/freshBlock.ts`) writes week 1
+of a new plan document instead, and the Sunday job takes over from week 2.
+
+- **Sized from Strava, not from the old plan.** The last 26 weeks of synced
+  activities are summarised, and week 1's running volume is capped in code
+  before the model sees it: a run in the last fortnight continues at the
+  recent four-week average; a longer gap restarts at 70% / 50% / 40% / 30% of
+  the pre-gap level (gaps up to 4 / 8 / 12 / 12+ weeks); no runs at all starts
+  at a 6km run/walk week. Week 1 is always easy running only.
+- **The setting travels with the plan.** `PlanDocument.setting`
+  (`src/lib/coaching/setting.ts`) records treadmill or outdoor running, gym or
+  bodyweight strength, whether every exercise gets a beginner's how-to, and a
+  "never include" list. The weekly regeneration reads it, so a treadmill block
+  stays a treadmill block. Plans without one are treated as outdoor +
+  bodyweight, which is what they all were.
+- **"Never include" is enforced, not requested.** Matching names are removed
+  from the exercise catalog before the schema enum and the prompt are built
+  (`ExerciseCatalog.without`), so "Bench Press" rules out all nineteen
+  bench-press entries for every week of the block.
+- **Week 1 is a whole week.** Built on a Monday or Tuesday it starts this
+  week; any later and it starts the following Monday, because week 2 is sized
+  from what week 1 held and a three-day week 1 would halve it.
+
+From a terminal, with a dry run the button doesn't have:
+
+```bash
+npm run plan:fresh-block -- --dry-run   # generate and print, write nothing
+npm run plan:fresh-block                # write it as the new active plan
+```
+
+The how-to text lives in `plan_workout_exercises.how_to` and the new plan
+source is `fresh_block` — both arrive in migration `0009`, which must be
+applied (`npm run db:migrate`) **before** this code is deployed: the dashboard
+selects every column of `plan_workout_exercises`.

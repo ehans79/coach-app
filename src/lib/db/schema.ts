@@ -114,7 +114,7 @@ export const activityStreams = pgTable("activity_streams", {
 // Plans — one row per generated plan version. Never overwritten; the active
 // version is flagged so the dashboard can show plan history + evolution.
 // ---------------------------------------------------------------------------
-export const planSourceEnum = pgEnum("plan_source", ["seed", "regeneration", "manual"]);
+export const planSourceEnum = pgEnum("plan_source", ["seed", "regeneration", "manual", "fresh_block"]);
 
 export const plans = pgTable("plans", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -197,6 +197,9 @@ export const planWorkoutExercises = pgTable("plan_workout_exercises", {
   sets: integer("sets"),
   reps: text("reps").notNull(), // "12-15" | "8 each side" | "45-60s" — count- or time-based
   restBetweenSetsSeconds: integer("rest_between_sets_seconds"),
+  // A beginner's walkthrough of the exercise (setup, movement, starting weight).
+  // Only written when the plan's setting asks for exercises to be explained.
+  howTo: text("how_to"),
   // Rounds/rest-between-rounds apply to the exercise's section as a whole
   // (e.g. "2-3 rounds" for a circuit) — duplicated onto every exercise row
   // in that section rather than modeled as a separate sections table, since

@@ -16,7 +16,8 @@
     "strava:backfill": "tsx scripts/backfill-activities.ts",
     "backfill:metrics": "tsx scripts/backfill-metrics.ts",
     "webhook:setup": "tsx scripts/setup-webhook.ts",
-    "cron:weekly": "tsx scripts/cron-weekly.ts"
+    "cron:weekly": "tsx scripts/cron-weekly.ts",
+    "plan:fresh-block": "tsx scripts/fresh-block.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",

@@ -9,6 +9,7 @@ const SOURCE_LABEL: Record<string, string> = {
   seed: "Initial plan",
   regeneration: "Auto-regenerated",
   manual: "Manual edit",
+  fresh_block: "Fresh block",
 };
 
 function formatDate(d: Date): string {

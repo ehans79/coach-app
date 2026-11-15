@@ -40,6 +40,24 @@ export class ExerciseCatalog {
     this.byName = new Map(exercises.map((e) => [e.name, e]));
   }
 
+  /**
+   * The same catalog minus every exercise whose name contains one of `terms`
+   * (case-insensitive). This is how "never prescribe X" is enforced: the
+   * excluded names are absent from the schema enum and the prompt's list, and
+   * lookup() rejects them, so an avoided exercise can't be selected rather
+   * than merely being discouraged.
+   */
+  without(terms: string[]): ExerciseCatalog {
+    const needles = terms.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0);
+    if (needles.length === 0) return this;
+    return new ExerciseCatalog(
+      this.exercises.filter((e) => {
+        const name = e.name.toLowerCase();
+        return !needles.some((needle) => name.includes(needle));
+      })
+    );
+  }
+
   lookup(name: string): GarminExercise {
     const found = this.byName.get(name);
     if (!found) {
